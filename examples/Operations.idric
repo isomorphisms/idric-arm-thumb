@@ -1,0 +1,42 @@
+module Operations
+
+import RendererPrimitives
+
+%export "arm-thumb:float32_sub_test"
+float32_sub_test : Float32 -> Float32 -> Float32
+float32_sub_test left right = float32_subtract left right
+
+%export "arm-thumb:float32_div_test"
+float32_div_test : Float32 -> Float32 -> Float32
+float32_div_test left right = float32_divide left right
+
+%export "arm-thumb:float32_neg_test"
+float32_neg_test : Float32 -> Float32
+float32_neg_test value = float32_negate value
+
+%export "arm-thumb:float32_abs_test"
+float32_abs_test : Float32 -> Float32
+float32_abs_test value = float32_absolute value
+
+%export "arm-thumb:float32_sqrt_test"
+float32_sqrt_test : Float32 -> Float32
+float32_sqrt_test value = float32_square_root value
+
+%export "arm-thumb:float32_load_test"
+float32_load_test : Float32Buffer -> Int32 -> Float32
+float32_load_test values index = float32_buffer_load values index
+
+%export "arm-thumb:float32_load_second"
+float32_load_second : Float32Buffer -> Float32
+float32_load_second values = float32_buffer_load values 1
+
+%export "arm-thumb:float32_identity"
+float32_identity : Float32 -> Float32
+float32_identity value = value
+
+%export "arm-thumb:float32_first"
+float32_first : Float32 -> Float32 -> Float32
+float32_first value ignored = value
+
+main : IO ()
+main = pure ()
