@@ -1,0 +1,36 @@
+name: verify
+
+on:
+  push:
+    branches: [idric-ir-first-slice]
+  pull_request:
+
+jobs:
+  arm-thumb:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out backend
+        uses: actions/checkout@v4
+
+      - name: Check out pinned Idriç compiler
+        uses: actions/checkout@v4
+        with:
+          repository: isomorphisms/Idric
+          ref: 081b9cde0591154839fb5d80d76e5570e0436300
+          path: Idric
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl ca-certificates clang file libgmp-dev
+
+      - name: Bootstrap pinned Idriç
+        run: ./Idric/edric bootstrap
+
+      - name: Install Idriç compiler API and libraries
+        run: |
+          make -C Idric install-api IDRIS2_BOOT="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+          make -C Idric install-bootstrap-libs IDRIS2="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Compile Idriç to Thumb and verify ARM object
+        run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
