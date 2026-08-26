@@ -1,0 +1,5 @@
+module PrintASCII
+
+%export "arm-thumb:main"
+main : IO ()
+main = putChar 'x'
