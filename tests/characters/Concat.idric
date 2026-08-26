@@ -1,0 +1,5 @@
+module Concat
+
+%export "arm-thumb:main"
+main : IO ()
+main = putStr ("x" ++ "λ")
