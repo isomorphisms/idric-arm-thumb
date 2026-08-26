@@ -7,8 +7,9 @@ BACKEND_SOURCES := $(wildcard src/Backend/ARMThumb/*.idr) src/RendererPrimitives
 DRIVER := build/exec/idric-arm-thumb
 AFFINE_ASSEMBLY := build/exec/affine.arm-thumb.S
 AFFINE_OBJECT := build/exec/affine.arm-thumb.o
+INVALID_INT_LOG := build/exec/invalid-int.log
 
-.PHONY: check-compiler check driver example inspect assemble verify clean
+.PHONY: check-compiler check driver example inspect reject assemble verify clean
 
 check-compiler:
 	@$(IDRIC) --version | grep -q '$(IDRIC_REVISION)' || { \
@@ -39,13 +40,25 @@ inspect: example
 	grep -q '^\.thumb' $(AFFINE_ASSEMBLY)
 	grep -q '^\.fpu vfpv3-d16' $(AFFINE_ASSEMBLY)
 
+reject: $(DRIVER) tests/source/InvalidInt.idric
+	@set -e; \
+	if IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
+		tests/source/InvalidInt.idric -o invalid_int > $(INVALID_INT_LOG) 2>&1; then \
+		cat $(INVALID_INT_LOG); \
+		echo 'Expected non-Float32 source ABI to be rejected'; \
+		exit 1; \
+	fi
+	grep -q 'arm-thumb rejected source ABI' $(INVALID_INT_LOG)
+	grep -q 'unsupported source primitive type' $(INVALID_INT_LOG)
+
 $(AFFINE_OBJECT): $(AFFINE_ASSEMBLY)
 	$(ARM_CLANG) --target=$(ARM_TARGET) -c -fPIC -march=armv7-a -mthumb \
 		-mfpu=vfpv3-d16 -mfloat-abi=softfp $(AFFINE_ASSEMBLY) -o $(AFFINE_OBJECT)
 
 assemble: $(AFFINE_OBJECT)
 
-verify: check inspect assemble
+verify: check inspect reject assemble
 	file $(AFFINE_OBJECT) | grep -q 'ELF 32-bit.*ARM'
 	readelf -h $(AFFINE_OBJECT) | grep -q 'Class:.*ELF32'
 	readelf -h $(AFFINE_OBJECT) | grep -q 'Machine:.*ARM'
