@@ -38,3 +38,8 @@ jobs:
 
       - name: Compile, inspect, assemble, and execute Thumb verification
         run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Compile character and UTF-8 probes to the current backend boundary
+        env:
+          IDRIC: ${{ github.workspace }}/Idric/build/exec/idris2
+        run: bash tests/characters/check-current-boundary.sh
