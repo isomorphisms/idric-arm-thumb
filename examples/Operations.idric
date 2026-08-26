@@ -38,5 +38,14 @@ float32_identity value = value
 float32_first : Float32 -> Float32 -> Float32
 float32_first value ignored = value
 
+%export "arm-thumb:float32_fourth"
+float32_fourth : Float32 -> Float32 -> Float32 -> Float32 -> Float32
+float32_fourth first second third fourth = fourth
+
+%export "arm-thumb:float32_sum_four"
+float32_sum_four : Float32 -> Float32 -> Float32 -> Float32 -> Float32
+float32_sum_four a b c d =
+  float32_add (float32_add a b) (float32_add c d)
+
 main : IO ()
 main = pure ()
