@@ -47,6 +47,12 @@ assemble: $(AFFINE_OBJECT)
 
 verify: check inspect assemble
 	file $(AFFINE_OBJECT) | grep -q 'ELF 32-bit.*ARM'
+	readelf -h $(AFFINE_OBJECT) | grep -q 'Class:.*ELF32'
+	readelf -h $(AFFINE_OBJECT) | grep -q 'Machine:.*ARM'
+	readelf -A $(AFFINE_OBJECT) | grep -q 'Tag_THUMB_ISA_use: Thumb-2'
+	readelf -A $(AFFINE_OBJECT) | grep -q 'Tag_FP_arch: VFPv3-D16'
+	readelf -sW $(AFFINE_OBJECT) | grep -q 'evaluate_affine'
+	@test -z "$$(nm -u $(AFFINE_OBJECT))"
 
 clean:
 	rm -rf build
