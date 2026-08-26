@@ -5,6 +5,10 @@ on:
     branches: [idric-ir-first-slice]
   pull_request:
 
+concurrency:
+  group: arm-thumb-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   arm-thumb:
     runs-on: ubuntu-24.04
