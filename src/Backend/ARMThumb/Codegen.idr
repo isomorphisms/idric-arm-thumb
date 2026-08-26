@@ -24,7 +24,8 @@ record ExportABI where
   constructor MkExportABI
   internal_name : Name
   external_symbol : String
-  arity : Nat
+  argument_representations : List Representation
+  result_representation : Representation
 
 private
 renderer_type_name : String -> Name
@@ -32,41 +33,43 @@ renderer_type_name leaf =
   NS (mkNamespace "RendererPrimitives") (UN (Basic leaf))
 
 private
-require_float32 : Term variables -> Either String ()
-require_float32 (Ref _ (TyCon 0) name) =
-  if name == renderer_type_name "Float32"
-    then Right ()
-    else Left ("unsupported source type `" ++ show name ++ "`")
-require_float32 (PrimVal _ (PrT primitive_type)) =
+classify_abi_type : Term variables -> Either String Representation
+classify_abi_type (PrimVal _ (PrT Int32Type)) = Right Word32
+classify_abi_type (PrimVal _ (PrT primitive_type)) =
   Left ("unsupported source primitive type `" ++ show primitive_type ++ "`")
-require_float32 type = Left "unsupported source type"
+classify_abi_type (Ref _ (TyCon 0) name) =
+  if name == renderer_type_name "Float32"
+    then Right Float32
+    else if name == renderer_type_name "Float32Buffer"
+      then Right Float32Pointer
+      else Left ("unsupported source type `" ++ show name ++ "`")
+classify_abi_type type = Left "unsupported source type"
 
 private
-parse_source_signature : Term variables -> Either String Nat
+parse_source_signature :
+  Term variables -> Either String (List Representation, Representation)
 parse_source_signature
   (Bind _ argument_name (Pi _ multiplicity Explicit argument_type) scope) = do
     if isErased multiplicity
       then
         Left
           ("erased argument `" ++ show argument_name ++
-           "` cannot cross the ARM ABI")
+           "` cannot cross the ARM C ABI")
       else do
-        require_float32 argument_type
-        more <- parse_source_signature scope
-        Right (S more)
+        argument_representation <- classify_abi_type argument_type
+        (more_arguments, result_representation) <- parse_source_signature scope
+        Right (argument_representation :: more_arguments, result_representation)
 parse_source_signature (Bind _ argument_name (Pi _ _ _ argument_type) scope) =
   Left
     ("implicit argument `" ++ show argument_name ++
-     "` is not supported by the ARM ABI")
+     "` is not supported by the ARM C ABI")
 parse_source_signature result_type = do
-  require_float32 result_type
-  Right Z
+  result_representation <- classify_abi_type result_type
+  Right ([], result_representation)
 
 private
 resolve_export_abi :
-  {auto c : Ref Ctxt Defs} ->
-  (Name, String) ->
-  Core ExportABI
+  {auto c : Ref Ctxt Defs} -> (Name, String) -> Core ExportABI
 resolve_export_abi (internal_name, external_symbol) = do
   definitions <- get Ctxt
   source_type <-
@@ -85,24 +88,30 @@ resolve_export_abi (internal_name, external_symbol) = do
         (UserError
           ("arm-thumb rejected source ABI for `" ++ show internal_name ++
            "`: " ++ explanation ++
-           ". First slice accepts only RendererPrimitives.Float32 " ++
-           "arguments and result."))
-    Right arity =>
-      if arity > 4
+           ". Supported arguments are RendererPrimitives.Float32, " ++
+           "RendererPrimitives.Float32Buffer, and Int32; the result must " ++
+           "be RendererPrimitives.Float32."))
+    Right (arguments, result) =>
+      if result /= Float32
         then
           throw
             (UserError
               ("arm-thumb rejected source ABI for `" ++ show internal_name ++
-               "`: more than four one-word arguments."))
-        else pure (MkExportABI internal_name external_symbol arity)
+               "`: result must be RendererPrimitives.Float32, not " ++
+               show result ++ "."))
+        else if length arguments > 4
+          then
+            throw
+              (UserError
+                ("arm-thumb rejected source ABI for `" ++ show internal_name ++
+                 "`: more than four one-word arguments."))
+          else pure (MkExportABI internal_name external_symbol arguments result)
 
 private
 lookup_anf_definition : Name -> List (Name, ANFDef) -> Maybe ANFDef
 lookup_anf_definition requested [] = Nothing
 lookup_anf_definition requested ((name, definition) :: rest) =
-  if requested == name
-    then Just definition
-    else lookup_anf_definition requested rest
+  if requested == name then Just definition else lookup_anf_definition requested rest
 
 private
 find_duplicate : List String -> Maybe String
@@ -115,7 +124,7 @@ validate_exports : List ExportABI -> Either String ()
 validate_exports [] =
   Left
     ("No functions selected. Add %export \"arm-thumb:<c_symbol>\" " ++
-     "to a numerical leaf.")
+     "to a runtime-free numerical leaf.")
 validate_exports exports =
   case find_duplicate (map external_symbol exports) of
     Nothing => Right ()
@@ -129,8 +138,7 @@ comment_each_line source =
 private
 render_selected_export : ExportABI -> String
 render_selected_export selected =
-  "@ " ++ show selected.internal_name ++ " -> " ++
-  selected.external_symbol ++ "\n"
+  "@ " ++ show selected.internal_name ++ " -> " ++ selected.external_symbol ++ "\n"
 
 private
 lower_exported_functions :
@@ -144,13 +152,14 @@ lower_exported_functions (selected :: rest) definitions = do
           ("No ANF definition was produced for exported function `" ++
            show selected.internal_name ++ "`")
       Just found => Right found
-  leaf <- lower_leaf selected.external_symbol selected.arity definition
+  leaf <-
+    lower_leaf selected.external_symbol
+      selected.argument_representations selected.result_representation definition
   leaf_assembly <- emit_leaf leaf
   more <- lower_exported_functions rest definitions
   Right
     ("\n@ Validated Idriç leaf IR for " ++ selected.external_symbol ++ ":\n" ++
-     comment_each_line (render_ir leaf) ++
-     leaf_assembly ++ more)
+     comment_each_line (render_ir leaf) ++ leaf_assembly ++ more)
 
 private
 render_backend_assembly :
@@ -173,28 +182,19 @@ fully_qualified_export (internal_name, external_symbol) = do
 
 private
 compile_arm_thumb :
-  Ref Ctxt Defs ->
-  Ref Syn SyntaxInfo ->
-  (temporary_directory : String) ->
-  (output_directory : String) ->
-  ClosedTerm ->
-  (requested_output_name : String) ->
-  Core (Maybe String)
+  Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
+  (temporary_directory : String) -> (output_directory : String) ->
+  ClosedTerm -> (requested_output_name : String) -> Core (Maybe String)
 compile_arm_thumb definitions syntax temporary_directory output_directory
                   term requested_output_name = do
-  resolved_compile_data <-
-    getCompileDataWith [backend_name] False ANF term
-  qualified_exports <-
-    traverse fully_qualified_export (exported resolved_compile_data)
+  resolved_compile_data <- getCompileDataWith [backend_name] False ANF term
+  qualified_exports <- traverse fully_qualified_export (exported resolved_compile_data)
   export_abis <- traverse resolve_export_abi qualified_exports
-  let assembly_file =
-        output_directory </> (requested_output_name ++ ".arm-thumb.S")
+  let assembly_file = output_directory </> (requested_output_name ++ ".arm-thumb.S")
   assembly_source <-
     case render_backend_assembly export_abis (anf resolved_compile_data) of
       Left explanation =>
-        throw
-          (UserError
-            ("arm-thumb rejected reachable program: " ++ explanation))
+        throw (UserError ("arm-thumb rejected reachable program: " ++ explanation))
       Right source => pure source
   Core.writeFile assembly_file assembly_source
   pure (Just assembly_file)
@@ -210,5 +210,4 @@ execute_arm_thumb definitions syntax temporary_directory term =
 
 public export
 arm_thumb_codegen : Codegen
-arm_thumb_codegen =
-  MkCG compile_arm_thumb execute_arm_thumb Nothing Nothing
+arm_thumb_codegen = MkCG compile_arm_thumb execute_arm_thumb Nothing Nothing
