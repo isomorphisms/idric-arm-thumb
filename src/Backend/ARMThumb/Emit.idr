@@ -32,18 +32,50 @@ store_float register local =
   ["        vstr    " ++ register ++ ", " ++ slot_address local]
 
 private
+materialise_word32 : Int -> List String
+materialise_word32 value =
+  let unsigned_value = if value < 0 then value + 4294967296 else value
+      low_half = unsigned_value `mod` 65536
+      high_half = unsigned_value `div` 65536
+  in
+    [ "        movw    r0, #" ++ show low_half
+    , "        movt    r0, #" ++ show high_half
+    ]
+
+private
 float_binary_mnemonic : FloatBinaryOperation -> String
 float_binary_mnemonic AddFloat32 = "vadd.f32"
+float_binary_mnemonic SubtractFloat32 = "vsub.f32"
 float_binary_mnemonic MultiplyFloat32 = "vmul.f32"
+float_binary_mnemonic DivideFloat32 = "vdiv.f32"
+
+private
+float_unary_mnemonic : FloatUnaryOperation -> String
+float_unary_mnemonic NegateFloat32 = "vneg.f32"
+float_unary_mnemonic AbsoluteFloat32 = "vabs.f32"
+float_unary_mnemonic SquareRootFloat32 = "vsqrt.f32"
 
 private
 emit_instruction : Instruction -> List String
 emit_instruction (Copy destination source) =
   load_word "r0" source ++ store_word "r0" destination
+emit_instruction (WordConstant destination value) =
+  materialise_word32 value ++ store_word "r0" destination
+emit_instruction (LoadFloat32 destination buffer index) =
+  load_word "r0" buffer ++
+  load_word "r1" index ++
+  [ "        add.w   r0, r0, r1, lsl #2"
+  , "        vldr    s0, [r0]"
+  ] ++
+  store_float "s0" destination
 emit_instruction (FloatBinary operation destination left right) =
   load_float "s0" left ++
   load_float "s1" right ++
   [ "        " ++ float_binary_mnemonic operation ++ " s0, s0, s1" ] ++
+  store_float "s0" destination
+emit_instruction (FloatUnary operation destination value) =
+  load_float "s0" value ++
+  [ "        " ++ float_unary_mnemonic operation ++ " s0, s0" ] ++
   store_float "s0" destination
 
 private
@@ -64,6 +96,13 @@ store_arguments (argument :: rest) (register :: registers) =
 store_arguments arguments [] = []
 
 private
+expect_representation : String -> Representation -> Local -> Either String ()
+expect_representation role expected local =
+  if local.representation == expected
+    then Right ()
+    else Left (role ++ " expected " ++ show expected ++ ", but got " ++ show local)
+
+private
 validate_local_home : LeafFunction -> Local -> Either String ()
 validate_local_home function local =
   if local.frame_slot < 0 || local.frame_slot * 4 + 4 > function.frame_bytes
@@ -78,10 +117,34 @@ validate_instruction : LeafFunction -> Instruction -> Either String ()
 validate_instruction function (Copy destination source) = do
   validate_local_home function destination
   validate_local_home function source
+  if destination.representation == source.representation
+    then Right ()
+    else Left "Copy operands have different representations"
+validate_instruction function (WordConstant destination value) = do
+  validate_local_home function destination
+  expect_representation "Word constant" Word32 destination
+  if value >= -2147483648 && value <= 2147483647
+    then Right ()
+    else Left ("Word constant is outside signed Int32 range: " ++ show value)
+validate_instruction function (LoadFloat32 destination buffer index) = do
+  validate_local_home function destination
+  validate_local_home function buffer
+  validate_local_home function index
+  expect_representation "Buffer load result" Float32 destination
+  expect_representation "Buffer load pointer" Float32Pointer buffer
+  expect_representation "Buffer load index" Word32 index
 validate_instruction function (FloatBinary operation destination left right) = do
   validate_local_home function destination
   validate_local_home function left
   validate_local_home function right
+  expect_representation "Float binary result" Float32 destination
+  expect_representation "Float binary left operand" Float32 left
+  expect_representation "Float binary right operand" Float32 right
+validate_instruction function (FloatUnary operation destination value) = do
+  validate_local_home function destination
+  validate_local_home function value
+  expect_representation "Float unary result" Float32 destination
+  expect_representation "Float unary operand" Float32 value
 
 private
 validate_instructions : LeafFunction -> List Instruction -> Either String ()
@@ -110,14 +173,15 @@ validate_leaf_for_emission function = do
          "1024 bytes, got " ++ show function.frame_bytes)
     else Right ()
   if length function.arguments > 4
-    then Left "ARM Thumb softfp leaf admits at most four arguments"
+    then Left "ARM Thumb softfp leaves admit at most four one-word arguments"
     else Right ()
   validate_arguments function function.arguments
   validate_instructions function function.instructions
   validate_local_home function function.result
+  expect_representation "Function result" Float32 function.result
 
-||| Emit Android armeabi-v7a Thumb-2. Float32 values cross the C ABI as raw
-||| words in r0-r3; VFPv3-D16 is used only inside the numerical leaf.
+||| Emit Android armeabi-v7a Thumb-2. Arguments cross the softfp C ABI as
+||| raw one-word values in r0-r3; VFPv3-D16 is used inside numerical leaves.
 public export
 emit_leaf : LeafFunction -> Either String String
 emit_leaf function = do
@@ -136,8 +200,7 @@ emit_leaf function = do
      load_word "r0" function.result ++
      [ "        add.w   sp, sp, #" ++ show function.frame_bytes
      , "        bx      lr"
-     , "        .size " ++ function.external_symbol ++
-       ", .-" ++ function.external_symbol
+     , "        .size " ++ function.external_symbol ++ ", .-" ++ function.external_symbol
      ]))
 
 public export
@@ -150,8 +213,8 @@ assembly_header =
     , ".thumb"
     , ".text"
     , ""
-    , "@ Runtime-free Idriç numerical leaf for Android armeabi-v7a."
-    , "@ ABI: softfp boundary, VFP Float32 arithmetic internally."
+    , "@ Runtime-free Idriç numerical leaves for Android armeabi-v7a."
+    , "@ C ABI: softfp at the boundary, hardware Float32 internally."
     ]
 
 public export
