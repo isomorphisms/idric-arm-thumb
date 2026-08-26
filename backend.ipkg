@@ -1,0 +1,17 @@
+package idric_arm_thumb
+version = 0.1.0
+
+sourcedir = "src"
+
+depends = idris2, network
+
+modules =
+  Backend.ARMThumb.IR,
+  Backend.ARMThumb.Lower,
+  Backend.ARMThumb.Emit,
+  Backend.ARMThumb.Codegen,
+  Backend.ARMThumb.Main,
+  RendererPrimitives
+
+main = Backend.ARMThumb.Main
+executable = idric-arm-thumb
