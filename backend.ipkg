@@ -3,7 +3,7 @@ version = 0.1.0
 
 sourcedir = "src"
 
-depends = idris2, network
+depends = idris2
 
 modules =
   Backend.ARMThumb.IR,
