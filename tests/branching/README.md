@@ -1,6 +1,6 @@
 # Branching and dispatch acceptance fixtures
 
-These six source fixtures are deliberately ahead of the current runtime-free
+These seven source fixtures are deliberately ahead of the current runtime-free
 ARM/Thumb lowering surface. They are tests now, not claims that branches are
 implemented.
 
@@ -27,6 +27,7 @@ assembly and QEMU semantic checks.
 | `UnicodeRangeLookup.idric` | ordered range decisions | `λ`→Greek, U+0301→combining, U+4E00→CJK, U+1F600→emoji range, surrogate→invalid | Unicode tables are compressed/range-shaped, not million-way jump tables |
 | `ParserDispatch.idric` | nested parser-state × token-class cases | want-expression+atom→shift atom, have-expression+infix→shift infix, have-expression+EOF→accept | parser action dispatch; nested dense cases can become tables or mixed branch/table lowering |
 | `IPv4ProtocolDispatch.idric` | sparse dispatch on an incoming 8-bit protocol tag | 1→ICMP, 6→TCP, 17→UDP, 41→IPv6, 47→GRE, 50→ESP, 51→AH, 58→ICMPv6, 132→SCTP, other→unknown | real network protocol dispatch; compare sparse branch lowering against a table with default-filled holes |
+| `IBSubstringCatStep.idric` | one DFA transition for exact fixed-string search | state 0 + `c`→1, state 1 + `a`→2, state 2 + `t`→matched, failed prefix + `c`→restart | real IB-derived substring workload; compare ordinary conditional lowering with table/computed-branch or packed-state approaches without importing heap/string runtime into this fixture |
 
 ## Important distinctions
 
@@ -49,3 +50,10 @@ backend a reason to learn ordered range branches or a searchable table.
 `ParserDispatch` is also not a claim that this miniature table is a full parser.
 It isolates the dispatch problem: given a parser state and a token class, select
 one parser action.
+
+`IBSubstringCatStep` comes from the browser optimization target tracked at
+https://github.com/isomorphisms/ib/issues/33.  It deliberately models one
+streaming state transition rather than importing `String`/`List Char` into this
+runtime-free branch fixture. Repeated transitions are an exact search for the
+literal `cat`; later executable tests should compare this ordinary DFA lowering
+with the table/computed-branch experiment in #9 and packed-bit search in #10.
