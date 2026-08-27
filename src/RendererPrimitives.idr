@@ -42,3 +42,11 @@ export %extern float32_square_root : Float32 -> Float32
 ||| straight-line fixture observable without introducing Unit lowering.
 export %extern rgb565_surface_store :
   RGB565Surface -> Int32 -> Int32 -> Int32 -> Int32
+
+||| Fill an already validated rectangle using scalar RGB565 halfword stores.
+||| x, y, width, and height are established before the hot pixel loop; the
+||| backend must not introduce per-pixel surface bounds checks. Non-positive
+||| width or height is an empty fill. The original pixel word is returned to
+||| keep this slice inside the existing one-word result boundary.
+export %extern rgb565_surface_fill_rect :
+  RGB565Surface -> Int32 -> Int32 -> Int32 -> Int32 -> Int32 -> Int32
