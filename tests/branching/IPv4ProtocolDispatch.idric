@@ -1,0 +1,36 @@
+module IPv4ProtocolDispatch
+
+import RendererPrimitives
+
+-- IPv4 carries an 8-bit Protocol field telling the receiver what kind of
+-- payload comes next.  This fixture models the dispatch decision itself:
+-- select a handler/action slot from the protocol number, then expose that
+-- choice through the existing Float32Buffer sentinel ABI.
+--
+-- Protocol numbers used here:
+-- 1 ICMP, 6 TCP, 17 UDP, 41 IPv6 encapsulation, 47 GRE,
+-- 50 ESP, 51 AH, 58 ICMPv6, 132 SCTP.
+--
+-- Action slots:
+-- 0 unknown, 1 ICMP, 2 TCP, 3 UDP, 4 IPv6, 5 GRE,
+-- 6 ESP, 7 AH, 8 ICMPv6, 9 SCTP.
+%export "arm-thumb:ipv4_protocol_dispatch"
+ipv4_protocol_dispatch : Float32Buffer -> Int32 -> Float32
+ipv4_protocol_dispatch values protocol =
+  let action_index : Int32
+      action_index =
+        case protocol of
+          1 => 1
+          6 => 2
+          17 => 3
+          41 => 4
+          47 => 5
+          50 => 6
+          51 => 7
+          58 => 8
+          132 => 9
+          _ => 0
+  in float32_buffer_load values action_index
+
+main : IO ()
+main = pure ()

@@ -1,0 +1,83 @@
+module ParserDispatch
+
+import RendererPrimitives
+
+-- Small table-driven expression parser dispatcher.
+--
+-- Parser states:
+-- 0 want expression, 1 have expression, 2 after prefix, 3 inside parenthesis,
+-- 4 after infix, 5 after if, 6 want then, 7 want else.
+--
+-- Token classes:
+-- 0 atom, 1 prefix, 2 infix, 3 left parenthesis, 4 right parenthesis,
+-- 5 separator, 6 if, 7 then, 8 else, 9 end of file, 10 comma, 11 unknown.
+--
+-- Action slots:
+-- 0 error, 1 shift atom, 2 shift prefix, 3 shift left parenthesis,
+-- 4 shift infix, 5 reduce expression, 6 close parenthesis, 7 shift if,
+-- 8 shift then, 9 shift else, 10 accept, 11 separator/reduce,
+-- 12 comma/reduce.
+%export "arm-thumb:parser_dispatch"
+parser_dispatch : Float32Buffer -> Int32 -> Int32 -> Float32
+parser_dispatch values parser_state token_class =
+  let action_index : Int32
+      action_index =
+        case parser_state of
+          0 =>
+            case token_class of
+              0 => 1
+              1 => 2
+              3 => 3
+              6 => 7
+              _ => 0
+          1 =>
+            case token_class of
+              2 => 4
+              4 => 6
+              5 => 11
+              7 => 5
+              8 => 5
+              9 => 10
+              10 => 12
+              _ => 0
+          2 =>
+            case token_class of
+              0 => 1
+              1 => 2
+              3 => 3
+              6 => 7
+              _ => 0
+          3 =>
+            case token_class of
+              0 => 1
+              1 => 2
+              3 => 3
+              6 => 7
+              _ => 0
+          4 =>
+            case token_class of
+              0 => 1
+              1 => 2
+              3 => 3
+              6 => 7
+              _ => 0
+          5 =>
+            case token_class of
+              0 => 1
+              1 => 2
+              3 => 3
+              6 => 7
+              _ => 0
+          6 =>
+            case token_class of
+              7 => 8
+              _ => 0
+          7 =>
+            case token_class of
+              8 => 9
+              _ => 0
+          _ => 0
+  in float32_buffer_load values action_index
+
+main : IO ()
+main = pure ()

@@ -20,7 +20,8 @@ DETERMINISM_B := build/exec/determinism-b.arm-thumb.S
 
 .PHONY: check-compiler check driver examples inspect reject reject-invalid-int \
 	reject-too-many-args reject-invalid-result assemble abi semantic determinism \
-	source-test lowering-test assembly-test semantic-test determinism-test test verify clean
+	branching-spec-test source-test lowering-test assembly-test semantic-test \
+	determinism-test test verify clean
 
 check-compiler:
 	@$(IDRIC) --version | grep -q '$(IDRIC_REVISION)' || { \
@@ -161,13 +162,16 @@ determinism: $(DETERMINISM_A) $(DETERMINISM_B)
 		exit 1; \
 	}
 
+branching-spec-test: check-compiler driver
+	IDRIC="$(IDRIC)" bash tests/branching/check-current-boundary.sh
+
 source-test: check reject
 lowering-test: inspect
 assembly-test: abi
 semantic-test: semantic
 determinism-test: determinism
 
-test: source-test lowering-test assembly-test semantic-test determinism-test
+test: source-test lowering-test assembly-test semantic-test determinism-test branching-spec-test
 
 verify: test
 
