@@ -1,0 +1,25 @@
+module PolarComplex
+
+import RendererPrimitives
+
+-- Runtime-free polar complex ABI for the first complex-number slice.
+-- One value is two Float32 words: (magnitude, phaseTurns).
+-- phaseTurns measures angle in turns, so 1.0 is one full revolution.
+-- This keeps dyadic roots of unity exact in binary32: 1/2, 1/4, 1/8, ...
+-- Until the backend grows a two-word return convention, one logical complex
+-- result is exposed as two scalar leaves with the same four-word input layout.
+
+%export "arm-thumb:polar_multiply_magnitude"
+polar_multiply_magnitude :
+  Float32 -> Float32 -> Float32 -> Float32 -> Float32
+polar_multiply_magnitude leftMagnitude leftPhase rightMagnitude rightPhase =
+  float32_multiply leftMagnitude rightMagnitude
+
+%export "arm-thumb:polar_multiply_phase"
+polar_multiply_phase :
+  Float32 -> Float32 -> Float32 -> Float32 -> Float32
+polar_multiply_phase leftMagnitude leftPhase rightMagnitude rightPhase =
+  float32_add leftPhase rightPhase
+
+main : IO ()
+main = pure ()
