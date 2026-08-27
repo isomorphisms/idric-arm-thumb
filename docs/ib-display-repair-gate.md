@@ -1,42 +1,63 @@
-# IB DisplayRepair ARM/Thumb gate
+# IB DisplayRepair ARM/Thumb design probe
 
 `tests/ib/IB/DisplayRepair.idric` is copied verbatim from IB. The companion
-program constructs one repair and observes all four fields. Its output is
-fixed by `tests/ib/expected.txt`.
+program constructs one repair and observes all four fields. Its provisional
+observable output is recorded in `tests/ib/expected.txt`.
 
-This is the first ordinary-Idriç acceptance gate. It requires the pieces that
-the numerical-leaf backend does not exercise:
+This is not the acceptance contract for IB or Idriç. Producing a binary, or
+even producing the expected output with direct Thumb instructions, does not
+establish that the language or the browser has been designed correctly. The
+fixture exists to force concrete language decisions and expose them for
+review.
 
-- `AV` and nested `ALet` for ordinary managed values;
-- string `APrimVal` values;
-- direct `AAppName` calls;
-- `ACon` lowered to a concrete native layout chosen for this program;
-- `AConCase` tag dispatch and field binding;
-- the small `IO`/`putStrLn` path needed to execute the oracle.
+Before implementation, the probe asks:
+
+- What is an Idriç string: encoding, length, ownership, mutability, slicing,
+  lifetime, and native representation?
+- What is a small named choice such as `copy_target_kind`, and when should its
+  representation be narrower than a machine word?
+- What is a record such as `DisplayRepair`: field layout, alignment,
+  ownership, construction, and return convention?
+- How should named functions, vector-indexed function families, and
+  vector-indexed left-hand sides appear before and after lowering?
+- What is the Idriç account of sequencing and outside effects, rather than
+  inheriting Idris `IO` merely because it already exists?
+- Which decisions belong to Idriç itself, which belong to the ARM/Thumb
+  backend, and which are unavoidable Android NDK boundaries?
+
+The current compiler happens to expose this source through ANF forms including
+`AV`, `ALet`, string `APrimVal`, direct `AAppName`, `ACon`, and
+`AConCase`. Those names describe the inherited compiler today. They neither
+specify Idriç nor determine the order in which the language must be designed.
+
+## Non-negotiable direction
 
 The direct Float32 path remains separate and unboxed. Ordinary values must
-also acquire native Idriç representations in this backend; RefC is not a
-fallback. For this gate, string literals can live as UTF-8 bytes in `.rodata`,
-the three-way choice can use a narrow tag, and `DisplayRepair` can use a
-known stack or caller-owned record layout. Direct calls and pattern matches
-become Thumb calls, loads, comparisons, and branches. No generic boxed value,
-RefC allocator, RefC reference counter, RefC garbage collector, or RefC ABI is
-part of the path.
+also acquire native Idriç representations; RefC is not a fallback. There is no
+generic boxed value, RefC allocator, RefC reference counter, RefC garbage
+collector, or RefC ABI in the IB ARM/Thumb path.
 
-On the compiler's present ANF, the smallest apparent implementation order is
-native copies and lets, string slices and literals, direct named calls, the
-concrete record, constructor cases, then the output boundary. That ANF shape
-is also replaceable scaffolding. The acceptance contract is the behavior of
-the real IB fixture and inspectable ARMv7 Thumb-2 output, not compatibility
-with Idris's prelude, primitives, runtime, or intermediate representation.
-General closures, partial application, recursion, generic heap allocation,
-arrays, and the rest of Idris `IO` are not required by this gate.
+The Android NDK supplies target tools and the specific platform facilities
+that Idriç deliberately chooses to use. It is not a substitute high-level
+runtime. Generated ARMv7 Thumb-2 instructions, data layout, calls, branches,
+allocation decisions, and platform crossings must remain inspectable.
 
-The executable is assembled and linked with the Android NDK toolchain. The
-oracle must inspect the generated instructions and execute under `qemu-arm`;
-the eventual phone boundary uses only the specific Android/NDK facilities the
-program actually needs.
+Likely representations—UTF-8 bytes in `.rodata`, an explicit string slice, a
+narrow choice tag, or a stack/caller-owned record—are proposals to examine,
+not automatic decisions. A locally efficient representation can still be
+rejected when it fights the desired language.
 
-After this program executes under `qemu-arm`, the next IB gates are
-`IB.Storage.storage_kind_text`, `IB.Storage.classify_path`, and finally IB's
-existing `Smoke.idric` program.
+## Meaning of success
+
+This probe becomes green only after its source concepts and native
+representations have been deliberately chosen and reviewed, its generated
+instructions implement those choices, and its behavior is correct under
+emulation and on the ARMv7 phone.
+
+Even then it is only one settled piece. IB is accepted when its construction
+is, in the user's judgment, the ground-up browser and programming-language
+design intended—not merely when an Idriç binary exists.
+
+Later design probes may include `IB.Storage.storage_kind_text`,
+`IB.Storage.classify_path`, and IB's `Smoke.idric`, but they must not turn
+into a race to compile progressively larger inherited Idris programs.
