@@ -1,6 +1,6 @@
 # Branching and dispatch acceptance fixtures
 
-These eight source fixtures are deliberately ahead of the current runtime-free
+These ten source fixtures are deliberately ahead of the current runtime-free
 ARM/Thumb lowering surface. They are tests now, not claims that branches are
 implemented.
 
@@ -28,7 +28,9 @@ assembly and QEMU semantic checks.
 | `ParserDispatch.idric` | nested parser-state × token-class cases | want-expression+atom→shift atom, have-expression+infix→shift infix, have-expression+EOF→accept | parser action dispatch; nested dense cases can become tables or mixed branch/table lowering |
 | `IPv4ProtocolDispatch.idric` | sparse dispatch on an incoming 8-bit protocol tag | 1→ICMP, 6→TCP, 17→UDP, 41→IPv6, 47→GRE, 50→ESP, 51→AH, 58→ICMPv6, 132→SCTP, other→unknown | real network protocol dispatch; compare sparse branch lowering against a table with default-filled holes |
 | `IBSubstringCatStep.idric` | one DFA transition for exact fixed-string search | state 0 + `c`→1, state 1 + `a`→2, state 2 + `t`→matched, failed prefix + `c`→restart | real IB-derived substring workload; compare ordinary conditional lowering with table/computed-branch or packed-state approaches without importing heap/string runtime into this fixture |
-| `FieldmouseRenderChoice.idric` | Field Mouse `choice` construction + constructor dispatch | undefined→0, null→1, true→2, false→3, number→4, text→5 | real Edriç application boundary: lower a `choice` tag/payload representation and dispatch on constructors rather than only switching on raw integer selectors |
+| `FieldmouseRenderChoice.idric` | Field Mouse `choice` construction + constructor dispatch | undefined→0, null→1, true→2, false→3, number→4, text→5 | real Idriç application boundary: lower a `choice` tag/payload representation and dispatch on constructors rather than only switching on raw integer selectors |
+| `FieldmouseSameValue.idric` | two Field Mouse values matched by constructor and payload | undefined=undefined, null=null, equal/unequal Boolean, number and text stand-ins, cross-constructor false | nested two-value constructor dispatch plus same-constructor payload comparison |
+| `FieldmouseDropSemicolon.idric` | one-node stream → token constructor → symbol payload match | semicolon head drops, comma/word/text/number/empty preserve | nested pattern matching derived from a real parser helper without requiring the List/String runtime yet |
 
 ## Important distinctions
 
@@ -66,3 +68,10 @@ It preserves the five-constructor choice shape and the Boolean subcases, while
 using Float32/Int32 stand-in payloads for the current Double/String payloads so
 the fixture tests constructor representation and tag dispatch without pulling
 those unrelated runtime surfaces into the ARM/Thumb experiment.
+
+`FieldmouseSameValue` and `FieldmouseDropSemicolon` are likewise pinned to the
+same Field Mouse revision. `same_value` deliberately keeps the two-input
+constructor/payload matrix. `drop_semicolon` keeps the nested stream/token/symbol
+shape but replaces the allocated `List token` tail with an Int32 marker so the
+first acceptance test is about pattern-match control flow rather than heap/list
+runtime support.
