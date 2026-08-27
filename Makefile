@@ -11,6 +11,8 @@ AFFINE_ASSEMBLY := build/exec/affine.arm-thumb.S
 AFFINE_OBJECT := build/exec/affine.arm-thumb.o
 OPERATIONS_ASSEMBLY := build/exec/operations.arm-thumb.S
 OPERATIONS_OBJECT := build/exec/operations.arm-thumb.o
+POLAR_ASSEMBLY := build/exec/polar-complex.arm-thumb.S
+POLAR_OBJECT := build/exec/polar-complex.arm-thumb.o
 SELFTEST := build/exec/backend-selftest
 INVALID_INT_LOG := build/exec/invalid-int.log
 TOO_MANY_ARGS_LOG := build/exec/too-many-args.log
@@ -45,7 +47,11 @@ $(OPERATIONS_ASSEMBLY): $(DRIVER) examples/Operations.idric
 	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
 		./$(DRIVER) --cg arm-thumb --source-dir examples examples/Operations.idric -o operations
 
-examples: $(AFFINE_ASSEMBLY) $(OPERATIONS_ASSEMBLY)
+$(POLAR_ASSEMBLY): $(DRIVER) examples/PolarComplex.idric
+	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+		./$(DRIVER) --cg arm-thumb --source-dir examples examples/PolarComplex.idric -o polar-complex
+
+examples: $(AFFINE_ASSEMBLY) $(OPERATIONS_ASSEMBLY) $(POLAR_ASSEMBLY)
 
 inspect: examples
 	grep -q '^evaluate_affine:' $(AFFINE_ASSEMBLY)
@@ -72,6 +78,10 @@ inspect: examples
 	grep -q 'vsqrt.f32' $(OPERATIONS_ASSEMBLY)
 	grep -Eq 'add\.w[[:space:]]+r0, r0, r1, lsl #2' $(OPERATIONS_ASSEMBLY)
 	grep -q 'movw' $(OPERATIONS_ASSEMBLY)
+	grep -q '^polar_multiply_magnitude:' $(POLAR_ASSEMBLY)
+	grep -q '^polar_multiply_phase:' $(POLAR_ASSEMBLY)
+	grep -q 'vmul.f32' $(POLAR_ASSEMBLY)
+	grep -q 'vadd.f32' $(POLAR_ASSEMBLY)
 
 reject-invalid-int: $(DRIVER) tests/source/InvalidInt.idric
 	@set -e; \
@@ -119,11 +129,16 @@ $(OPERATIONS_OBJECT): $(OPERATIONS_ASSEMBLY)
 	$(ARM_CLANG) --target=$(ARM_TARGET) -c -fPIC -march=armv7-a -mthumb \
 		-mfpu=vfpv3-d16 -mfloat-abi=softfp $(OPERATIONS_ASSEMBLY) -o $(OPERATIONS_OBJECT)
 
-assemble: $(AFFINE_OBJECT) $(OPERATIONS_OBJECT)
+$(POLAR_OBJECT): $(POLAR_ASSEMBLY)
+	$(ARM_CLANG) --target=$(ARM_TARGET) -c -fPIC -march=armv7-a -mthumb \
+		-mfpu=vfpv3-d16 -mfloat-abi=softfp $(POLAR_ASSEMBLY) -o $(POLAR_OBJECT)
+
+assemble: $(AFFINE_OBJECT) $(OPERATIONS_OBJECT) $(POLAR_OBJECT)
 
 abi: assemble
 	file $(AFFINE_OBJECT) | grep -q 'ELF 32-bit.*ARM'
 	file $(OPERATIONS_OBJECT) | grep -q 'ELF 32-bit.*ARM'
+	file $(POLAR_OBJECT) | grep -q 'ELF 32-bit.*ARM'
 	readelf -h $(AFFINE_OBJECT) | grep -q 'Class:.*ELF32'
 	readelf -h $(AFFINE_OBJECT) | grep -q 'Machine:.*ARM'
 	readelf -A $(AFFINE_OBJECT) | grep -q 'Tag_THUMB_ISA_use: Thumb-2'
@@ -132,15 +147,18 @@ abi: assemble
 	readelf -sW $(OPERATIONS_OBJECT) | grep -q 'float32_load_test'
 	readelf -sW $(OPERATIONS_OBJECT) | grep -q 'float32_fourth'
 	readelf -sW $(OPERATIONS_OBJECT) | grep -q 'float32_sum_four'
+	readelf -sW $(POLAR_OBJECT) | grep -q 'polar_multiply_magnitude'
+	readelf -sW $(POLAR_OBJECT) | grep -q 'polar_multiply_phase'
 	@test -z "$$(nm -u $(AFFINE_OBJECT))"
 	@test -z "$$(nm -u $(OPERATIONS_OBJECT))"
+	@test -z "$$(nm -u $(POLAR_OBJECT))"
 
-$(SELFTEST): $(AFFINE_ASSEMBLY) $(OPERATIONS_ASSEMBLY) tests/arm/backend_selftest.S
+$(SELFTEST): $(AFFINE_ASSEMBLY) $(OPERATIONS_ASSEMBLY) $(POLAR_ASSEMBLY) tests/arm/backend_selftest.S
 	$(ARM_CLANG) --target=$(ARM_EXEC_TARGET) -fuse-ld=lld -nostdlib -static \
 		-march=armv7-a -mthumb -mfpu=vfpv3-d16 -mfloat-abi=softfp \
 		-Wl,-e,_start -Wl,--no-dynamic-linker \
-		$(AFFINE_ASSEMBLY) $(OPERATIONS_ASSEMBLY) tests/arm/backend_selftest.S \
-		-o $(SELFTEST)
+		$(AFFINE_ASSEMBLY) $(OPERATIONS_ASSEMBLY) $(POLAR_ASSEMBLY) \
+		tests/arm/backend_selftest.S -o $(SELFTEST)
 
 semantic: $(SELFTEST)
 	file $(SELFTEST) | grep -q 'ELF 32-bit.*ARM'

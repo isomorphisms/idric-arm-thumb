@@ -140,6 +140,28 @@ _start:
         cmp     r0, r1
         bne     fail_edge_load
 
+        @ Polar ABI is (magnitude, phaseTurns) for each complex value.
+        @ (2, 1/8 turn) * (3, 1/4 turn) = (6, 3/8 turn).
+        @ Magnitude uses r0 and r2, proving the two-pair four-word layout.
+        ldr     r0, =0x40000000
+        ldr     r1, =0x3e000000
+        ldr     r2, =0x40400000
+        ldr     r3, =0x3e800000
+        bl      polar_multiply_magnitude
+        ldr     r1, =0x40c00000
+        cmp     r0, r1
+        bne     fail_polar_magnitude
+
+        @ Phase uses r1 and r3 from the same logical pair layout.
+        ldr     r0, =0x40000000
+        ldr     r1, =0x3e000000
+        ldr     r2, =0x40400000
+        ldr     r3, =0x3e800000
+        bl      polar_multiply_phase
+        ldr     r1, =0x3ec00000
+        cmp     r0, r1
+        bne     fail_polar_phase
+
         movs    r0, #0
         b       exit
 
@@ -193,6 +215,12 @@ fail_negative_div:
         b       exit
 fail_edge_load:
         movs    r0, #17
+        b       exit
+fail_polar_magnitude:
+        movs    r0, #18
+        b       exit
+fail_polar_phase:
+        movs    r0, #19
 
 exit:
         movs    r7, #1
