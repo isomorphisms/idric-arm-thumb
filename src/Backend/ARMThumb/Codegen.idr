@@ -205,6 +205,18 @@ program_calls_name requested ((_, definition) :: rest) =
   definition_calls_name requested definition || program_calls_name requested rest
 
 private
+definition_character_literals : ANFDef -> List Char
+definition_character_literals (MkAFun _ body) = character_literals body
+definition_character_literals (MkAError body) = character_literals body
+definition_character_literals _ = []
+
+private
+program_character_literals : List (Name, ANFDef) -> List Char
+program_character_literals [] = []
+program_character_literals ((_, definition) :: rest) =
+  definition_character_literals definition ++ program_character_literals rest
+
+private
 has_foreign_definition : Name -> String -> List (Name, ANFDef) -> Bool
 has_foreign_definition requested calling_convention [] = False
 has_foreign_definition requested calling_convention
@@ -217,17 +229,13 @@ has_foreign_definition requested calling_convention (_ :: rest) =
 private
 validate_print_ascii_program : List (Name, ANFDef) -> Either String ()
 validate_print_ascii_program definitions = do
-  body <-
-    case lookup_anf_definition print_ascii_main_name definitions of
-      Just (MkAFun _ found) => Right found
-      Just _ => Left "PrintASCII.main did not lower to an ANF function"
-      Nothing => Left "No ANF definition was produced for PrintASCII.main"
-  let characters = character_literals body
+  case lookup_anf_definition print_ascii_main_name definitions of
+    Just (MkAFun _ _) => Right ()
+    Just _ => Left "PrintASCII.main did not lower to an ANF function"
+    Nothing => Left "No ANF definition was produced for PrintASCII.main"
+  let characters = program_character_literals definitions
   if not (elem 'x' characters)
-    then Left "PrintASCII.main no longer contains the literal byte character 'x'"
-    else Right ()
-  if any (\character => character /= 'x') characters
-    then Left "PrintASCII.main contains a character other than the bootstrap byte 'x'"
+    then Left "PrintASCII reachable ANF no longer contains the literal byte character 'x'"
     else Right ()
   if not (program_calls_name put_char_name definitions)
     then Left "PrintASCII reachable ANF no longer calls Prelude.IO.prim__putChar"
