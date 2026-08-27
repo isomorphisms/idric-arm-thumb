@@ -1,0 +1,32 @@
+module IB.DisplayRepair
+
+%default total
+
+public export
+choice copy_target_kind one_of
+  code_block
+  preformatted_text
+  text_region
+
+public export
+data DisplayRepair = CopyButton String String copy_target_kind
+
+public export
+copy_button : String → String → copy_target_kind → DisplayRepair
+copy_button target_id text kind = CopyButton target_id text kind
+
+public export
+repair_label : DisplayRepair → String
+repair_label (CopyButton _ _ _) = "Copy"
+
+public export
+copy_target_id : DisplayRepair → String
+copy_target_id (CopyButton target_id _ _) = target_id
+
+public export
+copy_payload : DisplayRepair → String
+copy_payload (CopyButton _ text _) = text
+
+public export
+copy_target_type : DisplayRepair → copy_target_kind
+copy_target_type (CopyButton _ _ kind) = kind
