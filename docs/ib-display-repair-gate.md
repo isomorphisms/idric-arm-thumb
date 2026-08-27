@@ -10,25 +10,32 @@ the numerical-leaf backend does not exercise:
 - `AV` and nested `ALet` for ordinary managed values;
 - string `APrimVal` values;
 - direct `AAppName` calls;
-- `ACon` allocation using the existing RefC `Idris2_Value` constructor ABI;
+- `ACon` lowered to a concrete native layout chosen for this program;
 - `AConCase` tag dispatch and field binding;
 - the small `IO`/`putStrLn` path needed to execute the oracle.
 
-The direct Float32 path remains separate and unboxed. The existing RefC
-representation and runtime are available as bootstrap scaffolding for the
-first ordinary values; they are not an Idriç language contract. The backend
-may emit Thumb assembly for generated functions while borrowing RefC C sources
-for allocation, strings, reference counting, or primitives. If the IB gate
-exposes a better Idriç primitive or representation, the language, prelude,
-runtime, and backend may change together.
+The direct Float32 path remains separate and unboxed. Ordinary values must
+also acquire native Idriç representations in this backend; RefC is not a
+fallback. For this gate, string literals can live as UTF-8 bytes in `.rodata`,
+the three-way choice can use a narrow tag, and `DisplayRepair` can use a
+known stack or caller-owned record layout. Direct calls and pattern matches
+become Thumb calls, loads, comparisons, and branches. No generic boxed value,
+RefC allocator, RefC reference counter, RefC garbage collector, or RefC ABI is
+part of the path.
 
 On the compiler's present ANF, the smallest apparent implementation order is
-managed copies and lets, string constants, direct named calls, constructors,
-constructor cases, then the output primitive. That ANF shape is also
-replaceable scaffolding. The acceptance contract is the behavior of the real
-IB fixture, not compatibility with Idris's prelude, primitives, runtime, or
-intermediate representation. General closures, partial application,
-recursion, arrays, and the rest of `IO` are not required by this gate.
+native copies and lets, string slices and literals, direct named calls, the
+concrete record, constructor cases, then the output boundary. That ANF shape
+is also replaceable scaffolding. The acceptance contract is the behavior of
+the real IB fixture and inspectable ARMv7 Thumb-2 output, not compatibility
+with Idris's prelude, primitives, runtime, or intermediate representation.
+General closures, partial application, recursion, generic heap allocation,
+arrays, and the rest of Idris `IO` are not required by this gate.
+
+The executable is assembled and linked with the Android NDK toolchain. The
+oracle must inspect the generated instructions and execute under `qemu-arm`;
+the eventual phone boundary uses only the specific Android/NDK facilities the
+program actually needs.
 
 After this program executes under `qemu-arm`, the next IB gates are
 `IB.Storage.storage_kind_text`, `IB.Storage.classify_path`, and finally IB's
