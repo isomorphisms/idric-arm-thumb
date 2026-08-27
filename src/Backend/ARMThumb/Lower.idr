@@ -24,6 +24,7 @@ data RawInstruction
   | RawLoadFloat32 Int Int Int
   | RawFloatBinary FloatBinaryOperation Int Int Int
   | RawFloatUnary FloatUnaryOperation Int Int
+  | RawStoreRGB565 Int Int Int Int Int
 
 private
 record BuildState where
@@ -79,6 +80,7 @@ data RendererPrimitive
   = BufferLoad
   | Binary FloatBinaryOperation
   | Unary FloatUnaryOperation
+  | RGB565Store
 
 private
 renderer_primitive : Name -> Maybe RendererPrimitive
@@ -99,7 +101,9 @@ renderer_primitive name =
                 then Just (Unary AbsoluteFloat32)
                 else if name == renderer_name "float32_square_root"
                   then Just (Unary SquareRootFloat32)
-                  else Nothing
+                  else if name == renderer_name "rgb565_surface_store"
+                    then Just RGB565Store
+                    else Nothing
 
 private
 add_constraint : RepresentationConstraint -> BuildState -> BuildState
@@ -121,11 +125,11 @@ bind_variable role variable
     then
       Left
         (role ++ " v" ++ show variable ++
-         " is already defined in this numerical leaf")
+         " is already defined in this runtime-free leaf")
     else if next >= max_locals
       then
         Left
-          ("The numerical leaf needs more than " ++ show max_locals ++
+          ("The runtime-free leaf needs more than " ++ show max_locals ++
            " dense four-byte stack homes")
       else
         Right
@@ -199,6 +203,17 @@ add_float_unary operation destination value state =
       (add_constraint (HasRepresentation value Float32) state))
 
 private
+add_rgb565_store :
+  Int -> Int -> Int -> Int -> Int -> BuildState -> BuildState
+add_rgb565_store destination surface x y pixel state =
+  add_instruction (RawStoreRGB565 destination surface x y pixel)
+    (add_constraint (HasRepresentation destination Word32)
+      (add_constraint (HasRepresentation surface RGB565SurfacePointer)
+        (add_constraint (HasRepresentation x Word32)
+          (add_constraint (HasRepresentation y Word32)
+            (add_constraint (HasRepresentation pixel Word32) state)))))
+
+private
 lower_external :
   Int -> Name -> List AVar -> BuildState -> Either String BuildState
 lower_external destination name arguments state =
@@ -239,6 +254,19 @@ lower_external destination name arguments state =
           Left
             ("Renderer primitive `" ++ show name ++
              "` requires one local operand, got " ++ show arguments)
+    Just RGB565Store =>
+      case arguments of
+        [ALocal surface, ALocal x, ALocal y, ALocal pixel] => do
+          require_bound "RGB565 surface" surface state
+          require_bound "RGB565 x coordinate" x state
+          require_bound "RGB565 y coordinate" y state
+          require_bound "RGB565 pixel" pixel state
+          with_destination <- bind_variable "Let destination" destination state
+          Right (add_rgb565_store destination surface x y pixel with_destination)
+        _ =>
+          Left
+            ("Renderer primitive `" ++ show name ++
+             "` requires four local operands, got " ++ show arguments)
 
 private
 lower_value : Int -> ANF -> BuildState -> Either String BuildState
@@ -257,8 +285,7 @@ lower_value destination (AExtPrim _ _ name arguments) state =
   lower_external destination name arguments state
 lower_value destination expression state =
   Left
-    ("Unsupported ANF value in the runtime-free numerical subset: " ++
-     show expression)
+    ("Unsupported ANF value in the runtime-free subset: " ++ show expression)
 
 private
 lower_assignment : Int -> ANF -> BuildState -> Either String BuildState
@@ -399,6 +426,18 @@ resolve_instruction slots constraints (RawFloatUnary operation destination value
   expect_representation "Float unary result" Float32 destination_local
   expect_representation "Float unary operand" Float32 value_local
   Right (FloatUnary operation destination_local value_local)
+resolve_instruction slots constraints (RawStoreRGB565 destination surface x y pixel) = do
+  destination_local <- resolve_local slots constraints destination
+  surface_local <- resolve_local slots constraints surface
+  x_local <- resolve_local slots constraints x
+  y_local <- resolve_local slots constraints y
+  pixel_local <- resolve_local slots constraints pixel
+  expect_representation "RGB565 store result" Word32 destination_local
+  expect_representation "RGB565 surface" RGB565SurfacePointer surface_local
+  expect_representation "RGB565 x coordinate" Word32 x_local
+  expect_representation "RGB565 y coordinate" Word32 y_local
+  expect_representation "RGB565 pixel" Word32 pixel_local
+  Right (StoreRGB565 destination_local surface_local x_local y_local pixel_local)
 
 private
 resolve_instructions :
@@ -442,6 +481,12 @@ resolve_function symbol argument_variables result_variable result_representation
     (MkLeafFunction symbol arguments instructions result
       (aligned_frame_bytes state.next_slot))
 
+private
+is_return_representation : Representation -> Bool
+is_return_representation Word32 = True
+is_return_representation Float32 = True
+is_return_representation _ = False
+
 ||| Validate and lower one exported ANF function into representation-tagged IR.
 public export
 lower_leaf :
@@ -450,11 +495,11 @@ lower_leaf :
 lower_leaf requested_symbol argument_representations result_representation
            (MkAFun argument_variables body) = do
   symbol <- validate_external_symbol requested_symbol
-  if result_representation /= Float32
+  if not (is_return_representation result_representation)
     then
       Left
         ("Export `" ++ symbol ++
-         "` must return RendererPrimitives.Float32, not " ++
+         "` must return a one-word scalar (Word32 or Float32), not " ++
          show result_representation)
     else if length argument_variables > 4
       then Left ("Export `" ++ symbol ++ "` has more than four 32-bit softfp ABI arguments")

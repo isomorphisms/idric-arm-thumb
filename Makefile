@@ -11,7 +11,9 @@ AFFINE_ASSEMBLY := build/exec/affine.arm-thumb.S
 AFFINE_OBJECT := build/exec/affine.arm-thumb.o
 OPERATIONS_ASSEMBLY := build/exec/operations.arm-thumb.S
 OPERATIONS_OBJECT := build/exec/operations.arm-thumb.o
+RGB565_ASSEMBLY := build/exec/rgb565-generated.arm-thumb.S
 SELFTEST := build/exec/backend-selftest
+RGB565_SELFTEST := build/exec/rgb565-generated-selftest
 INVALID_INT_LOG := build/exec/invalid-int.log
 TOO_MANY_ARGS_LOG := build/exec/too-many-args.log
 INVALID_RESULT_LOG := build/exec/invalid-result.log
@@ -45,9 +47,14 @@ $(OPERATIONS_ASSEMBLY): $(DRIVER) examples/Operations.idric
 	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
 		./$(DRIVER) --cg arm-thumb --source-dir examples examples/Operations.idric -o operations
 
+$(RGB565_ASSEMBLY): $(DRIVER) tests/framebuffer/GeneratedPixelStore.idric
+	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+		./$(DRIVER) --cg arm-thumb --source-dir tests/framebuffer \
+		tests/framebuffer/GeneratedPixelStore.idric -o rgb565-generated
+
 examples: $(AFFINE_ASSEMBLY) $(OPERATIONS_ASSEMBLY)
 
-inspect: examples
+inspect: examples $(RGB565_ASSEMBLY)
 	grep -q '^evaluate_affine:' $(AFFINE_ASSEMBLY)
 	grep -q 'vmul.f32' $(AFFINE_ASSEMBLY)
 	grep -q 'vadd.f32' $(AFFINE_ASSEMBLY)
@@ -72,6 +79,13 @@ inspect: examples
 	grep -q 'vsqrt.f32' $(OPERATIONS_ASSEMBLY)
 	grep -Eq 'add\.w[[:space:]]+r0, r0, r1, lsl #2' $(OPERATIONS_ASSEMBLY)
 	grep -q 'movw' $(OPERATIONS_ASSEMBLY)
+	grep -q '^rgb565_put_pixel_generated:' $(RGB565_ASSEMBLY)
+	grep -Eq 'ldr[[:space:]]+r1, \[r0, #0\]' $(RGB565_ASSEMBLY)
+	grep -Eq 'ldr[[:space:]]+r2, \[r0, #16\]' $(RGB565_ASSEMBLY)
+	grep -Eq 'mla[[:space:]]+r1, r3, r2, r1' $(RGB565_ASSEMBLY)
+	grep -Eq 'add\.w[[:space:]]+r1, r1, r2, lsl #1' $(RGB565_ASSEMBLY)
+	grep -Eq 'strh[[:space:]]+r2, \[r1\]' $(RGB565_ASSEMBLY)
+	@test -z "$$(grep -E '^[[:space:]]+bl[[:space:]]' $(RGB565_ASSEMBLY) || true)"
 
 reject-invalid-int: $(DRIVER) tests/source/InvalidInt.idric
 	@set -e; \
@@ -103,11 +117,11 @@ reject-invalid-result: $(DRIVER) tests/source/InvalidResult.idric
 		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
 		tests/source/InvalidResult.idric -o invalid_result > $(INVALID_RESULT_LOG) 2>&1; then \
 		cat $(INVALID_RESULT_LOG); \
-		echo 'Expected non-Float32 result ABI to be rejected'; \
+		echo 'Expected pointer result ABI to be rejected'; \
 		exit 1; \
 	fi
 	grep -q 'arm-thumb rejected source ABI' $(INVALID_RESULT_LOG)
-	grep -q 'result must be RendererPrimitives.Float32' $(INVALID_RESULT_LOG)
+	grep -q 'result must be RendererPrimitives.Float32 or Int32' $(INVALID_RESULT_LOG)
 
 reject: reject-invalid-int reject-too-many-args reject-invalid-result
 
@@ -142,9 +156,18 @@ $(SELFTEST): $(AFFINE_ASSEMBLY) $(OPERATIONS_ASSEMBLY) tests/arm/backend_selftes
 		$(AFFINE_ASSEMBLY) $(OPERATIONS_ASSEMBLY) tests/arm/backend_selftest.S \
 		-o $(SELFTEST)
 
-semantic: $(SELFTEST)
+$(RGB565_SELFTEST): $(RGB565_ASSEMBLY) tests/framebuffer/generated_selftest.S
+	$(ARM_CLANG) --target=$(ARM_EXEC_TARGET) -fuse-ld=lld -nostdlib -static \
+		-march=armv7-a -mthumb -mfpu=vfpv3-d16 -mfloat-abi=softfp \
+		-Wl,-e,_start -Wl,--no-dynamic-linker \
+		$(RGB565_ASSEMBLY) tests/framebuffer/generated_selftest.S \
+		-o $(RGB565_SELFTEST)
+
+semantic: $(SELFTEST) $(RGB565_SELFTEST)
 	file $(SELFTEST) | grep -q 'ELF 32-bit.*ARM'
+	file $(RGB565_SELFTEST) | grep -q 'ELF 32-bit.*ARM'
 	$(QEMU_ARM) -cpu cortex-a9 $(SELFTEST)
+	$(QEMU_ARM) -cpu cortex-a9 $(RGB565_SELFTEST)
 
 $(DETERMINISM_A): $(DRIVER) examples/Operations.idric
 	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \

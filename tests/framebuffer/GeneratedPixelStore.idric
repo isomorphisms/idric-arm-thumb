@@ -1,0 +1,11 @@
+module GeneratedPixelStore
+
+import RendererPrimitives
+
+%export "arm-thumb:rgb565_put_pixel_generated"
+rgb565_put_pixel_generated : RGB565Surface -> Int32 -> Int32 -> Int32 -> Int32
+rgb565_put_pixel_generated surface x y pixel =
+  rgb565_surface_store surface x y pixel
+
+main : IO ()
+main = pure ()
