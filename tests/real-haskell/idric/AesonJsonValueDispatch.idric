@@ -1,0 +1,31 @@
+module AesonJsonValueDispatch
+
+import RendererPrimitives
+
+-- Decision-only reduction of Data.Aeson.Parser.Internal.jsonWith:
+-- https://github.com/haskell/aeson/blob/51c4db6d9dbe5c6900e626bf6a58fd00e8ef9f09/attoparsec-aeson/src/Data/Aeson/Parser/Internal.hs
+--
+-- Slots: 0 string, 1 object, 2 array, 3 false, 4 true, 5 null,
+-- 6 number, 7 invalid. The original parser performs the corresponding parse
+-- after this first-byte dispatch; this fixture isolates only the decision.
+%export "arm-thumb:aeson_json_value_dispatch"
+aeson_json_value_dispatch : Float32Buffer -> Int32 -> Float32
+aeson_json_value_dispatch values byte =
+  let action : Int32
+      action =
+        case byte of
+          34 => 0
+          123 => 1
+          91 => 2
+          102 => 3
+          116 => 4
+          110 => 5
+          45 => 6
+          _ =>
+            if byte >= 48 && byte <= 57
+              then 6
+              else 7
+  in float32_buffer_load values action
+
+main : IO ()
+main = pure ()
