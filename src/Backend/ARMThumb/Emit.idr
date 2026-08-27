@@ -77,6 +77,18 @@ emit_instruction (FloatUnary operation destination value) =
   load_float "s0" value ++
   [ "        " ++ float_unary_mnemonic operation ++ " s0, s0" ] ++
   store_float "s0" destination
+emit_instruction (StoreRGB565 destination surface x y pixel) =
+  load_word "r0" surface ++
+  [ "        ldr     r1, [r0, #0]"
+  , "        ldr     r2, [r0, #16]"
+  ] ++
+  load_word "r3" y ++
+  [ "        mla     r1, r3, r2, r1" ] ++
+  load_word "r2" x ++
+  [ "        add.w   r1, r1, r2, lsl #1" ] ++
+  load_word "r2" pixel ++
+  [ "        strh    r2, [r1]" ] ++
+  store_word "r2" destination
 
 private
 emit_instructions : List Instruction -> List String
@@ -145,6 +157,17 @@ validate_instruction function (FloatUnary operation destination value) = do
   validate_local_home function value
   expect_representation "Float unary result" Float32 destination
   expect_representation "Float unary operand" Float32 value
+validate_instruction function (StoreRGB565 destination surface x y pixel) = do
+  validate_local_home function destination
+  validate_local_home function surface
+  validate_local_home function x
+  validate_local_home function y
+  validate_local_home function pixel
+  expect_representation "RGB565 store result" Word32 destination
+  expect_representation "RGB565 surface" RGB565SurfacePointer surface
+  expect_representation "RGB565 x coordinate" Word32 x
+  expect_representation "RGB565 y coordinate" Word32 y
+  expect_representation "RGB565 pixel" Word32 pixel
 
 private
 validate_instructions : LeafFunction -> List Instruction -> Either String ()
@@ -159,6 +182,12 @@ validate_arguments function [] = Right ()
 validate_arguments function (argument :: rest) = do
   validate_local_home function argument
   validate_arguments function rest
+
+private
+is_return_representation : Representation -> Bool
+is_return_representation Word32 = True
+is_return_representation Float32 = True
+is_return_representation _ = False
 
 private
 validate_leaf_for_emission : LeafFunction -> Either String ()
@@ -178,10 +207,15 @@ validate_leaf_for_emission function = do
   validate_arguments function function.arguments
   validate_instructions function function.instructions
   validate_local_home function function.result
-  expect_representation "Function result" Float32 function.result
+  if is_return_representation function.result.representation
+    then Right ()
+    else
+      Left
+        ("Function result must be Word32 or Float32, but got " ++
+         show function.result)
 
 ||| Emit Android armeabi-v7a Thumb-2. Arguments cross the softfp C ABI as
-||| raw one-word values in r0-r3; VFPv3-D16 is used inside numerical leaves.
+||| raw one-word values in r0-r3; Word32 and Float32 results leave in r0.
 public export
 emit_leaf : LeafFunction -> Either String String
 emit_leaf function = do
@@ -213,8 +247,8 @@ assembly_header =
     , ".thumb"
     , ".text"
     , ""
-    , "@ Runtime-free Idriç numerical leaves for Android armeabi-v7a."
-    , "@ C ABI: softfp at the boundary, hardware Float32 internally."
+    , "@ Runtime-free Idriç leaves for Android armeabi-v7a."
+    , "@ C ABI: one-word values in r0-r3; VFP Float32 is softfp at the boundary."
     ]
 
 public export

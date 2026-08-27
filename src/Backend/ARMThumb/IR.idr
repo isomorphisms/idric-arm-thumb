@@ -10,12 +10,14 @@ data Representation
   = Word32
   | Float32
   | Float32Pointer
+  | RGB565SurfacePointer
 
 public export
 Eq Representation where
   Word32 == Word32 = True
   Float32 == Float32 = True
   Float32Pointer == Float32Pointer = True
+  RGB565SurfacePointer == RGB565SurfacePointer = True
   _ == _ = False
 
 public export
@@ -23,6 +25,7 @@ Show Representation where
   show Word32 = "Word32"
   show Float32 = "Float32"
   show Float32Pointer = "Float32Pointer"
+  show RGB565SurfacePointer = "RGB565SurfacePointer"
 
 ||| A validated ANF local and its dense four-byte stack home.
 public export
@@ -74,6 +77,7 @@ data Instruction
   | LoadFloat32 Local Local Local
   | FloatBinary FloatBinaryOperation Local Local Local
   | FloatUnary FloatUnaryOperation Local Local
+  | StoreRGB565 Local Local Local Local Local
 
 public export
 Show Instruction where
@@ -88,8 +92,11 @@ Show Instruction where
     " " ++ show left ++ " " ++ show right
   show (FloatUnary operation destination value) =
     show destination ++ " = " ++ show operation ++ " " ++ show value
+  show (StoreRGB565 destination surface x y pixel) =
+    show destination ++ " = rgb565-store " ++
+    show surface ++ " " ++ show x ++ " " ++ show y ++ " " ++ show pixel
 
-||| One C-callable, closure-free numerical leaf.
+||| One C-callable, closure-free runtime-free leaf.
 public export
 record LeafFunction where
   constructor MkLeafFunction

@@ -3,7 +3,7 @@ module InvalidResult
 import RendererPrimitives
 
 %export "arm-thumb:invalid_result"
-invalid_result : Int32 -> Int32
+invalid_result : Float32Buffer -> Float32Buffer
 invalid_result value = value
 
 main : IO ()

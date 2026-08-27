@@ -42,7 +42,9 @@ classify_abi_type (Ref _ (TyCon 0) name) =
     then Right Float32
     else if name == renderer_type_name "Float32Buffer"
       then Right Float32Pointer
-      else Left ("unsupported source type `" ++ show name ++ "`")
+      else if name == renderer_type_name "RGB565Surface"
+        then Right RGB565SurfacePointer
+        else Left ("unsupported source type `" ++ show name ++ "`")
 classify_abi_type type = Left "unsupported source type"
 
 private
@@ -68,6 +70,12 @@ parse_source_signature result_type = do
   Right ([], result_representation)
 
 private
+is_return_representation : Representation -> Bool
+is_return_representation Word32 = True
+is_return_representation Float32 = True
+is_return_representation _ = False
+
+private
 resolve_export_abi :
   {auto c : Ref Ctxt Defs} -> (Name, String) -> Core ExportABI
 resolve_export_abi (internal_name, external_symbol) = do
@@ -89,15 +97,15 @@ resolve_export_abi (internal_name, external_symbol) = do
           ("arm-thumb rejected source ABI for `" ++ show internal_name ++
            "`: " ++ explanation ++
            ". Supported arguments are RendererPrimitives.Float32, " ++
-           "RendererPrimitives.Float32Buffer, and Int32; the result must " ++
-           "be RendererPrimitives.Float32."))
+           "RendererPrimitives.Float32Buffer, RendererPrimitives.RGB565Surface, " ++
+           "and Int32; the result must be RendererPrimitives.Float32 or Int32."))
     Right (arguments, result) =>
-      if result /= Float32
+      if not (is_return_representation result)
         then
           throw
             (UserError
               ("arm-thumb rejected source ABI for `" ++ show internal_name ++
-               "`: result must be RendererPrimitives.Float32, not " ++
+               "`: result must be RendererPrimitives.Float32 or Int32, not " ++
                show result ++ "."))
         else if length arguments > 4
           then
@@ -124,7 +132,7 @@ validate_exports : List ExportABI -> Either String ()
 validate_exports [] =
   Left
     ("No functions selected. Add %export \"arm-thumb:<c_symbol>\" " ++
-     "to a runtime-free numerical leaf.")
+     "to a runtime-free leaf.")
 validate_exports exports =
   case find_duplicate (map external_symbol exports) of
     Nothing => Right ()

@@ -1,32 +1,50 @@
 # Framebuffer backend tests
 
-This directory starts the executable acceptance work for #24.
+This directory carries the executable acceptance work for #24.
 
-## Current test: RGB565 ISA oracle
+## Handwritten RGB565 ISA oracle
 
-`rgb565_oracle.S` is a handwritten Thumb-2 reference program. It establishes the exact low-level semantics that later Idriç-generated code should match; it is **not** evidence that the backend already lowers framebuffer operations.
+`rgb565_oracle.S` is the handwritten Thumb-2 reference program established by
+the parent oracle PR. It fixes the low-level semantics independently of the
+compiler:
 
-The oracle models a 4-pixel-wide RGB565 surface whose logical rows occupy 8 bytes but whose physical stride is 12 bytes. It checks:
+- a 4-pixel logical RGB565 row occupies 8 bytes
+- physical stride is deliberately padded to 12 bytes
+- `(3, 2)` lands at byte offset `2 * 12 + 2 * 3 = 30`
+- adjacent 16-bit pixels remain independent
+- multi-row writes respect padded stride
+- row padding and guard halfwords remain untouched
 
-- `(0, 0)` addressing
-- nonzero `x` and `y`: `(3, 2)` must land at byte offset `2 * 12 + 2 * 3 = 30`
-- independent adjacent 16-bit stores
-- a 2x2 rectangle fill over two padded rows
-- untouched pixels and row-padding around that rectangle
-- guard halfwords immediately before and after the framebuffer
+`check.sh` assembles/links that reference program and runs it under `qemu-arm`.
 
-`check.sh` assembles/links the oracle as a static ARMv7 Thumb executable and runs it under `qemu-arm`. A nonzero exit status identifies the failed assertion.
+## Smallest generated gate
 
-## Next compiler-generated gate
+`GeneratedPixelStore.idric` is the first generated Idriç framebuffer slice. It
+accepts a device-independent `RGB565Surface` descriptor plus `x`, `y`, and a
+pixel word, then invokes the exact renderer primitive that the ARM backend
+lowers.
 
-The current backend only has the Float32 renderer seam, so the next implementation step is to add the smallest integer/pointer/store representation needed for a source-level RGB565 fixture. At that point the generated-code tests should require:
+The descriptor is caller-owned, contains base/extent/width/height/stride
+metadata, and is independent of fbdev, DRM/KMS, Android native windows, or
+bare-metal scanout. RGB565 itself is carried by the type. Bounds and ownership
+must already have been established when this hot-path descriptor is supplied;
+the generated store deliberately performs no per-pixel bounds check.
+
+The backend must emit the equivalent of:
 
 ```text
-byte_offset = y * stride_bytes + 2 * x
+base        = surface.base
+stride      = surface.stride_bytes
+byte_offset = y * stride + 2 * x
 address     = base + byte_offset
-store       = 16-bit RGB565 pixel
+store16(address, pixel)
 ```
 
-and inspect the generated Thumb assembly for a halfword store (`STRH` or an equivalent 16-bit store), while keeping bounds/proof work out of the inner pixel loop.
+`make verify` therefore checks the generated assembly for the descriptor loads,
+`MLA`, the `x << 1` address term, and `STRH`, rejects runtime calls, links the
+generated function with `generated_selftest.S`, and executes it under QEMU on
+the same padded 12-byte-stride geometry used by the oracle.
 
-Do not make `/dev/fb0` part of this compiler contract. fbdev, DRM/KMS, Android native windows, and bare-metal displays are platform adapters over the same surface semantics.
+This PR intentionally stops at one generated `putPixel`. Generic integer
+arithmetic, general pointer arithmetic, `fillRect`, proof construction, and
+platform adapters remain later slices.
