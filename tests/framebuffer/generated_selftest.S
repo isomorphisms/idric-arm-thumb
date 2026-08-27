@@ -74,6 +74,7 @@ _start:
         cmp     r0, r1
         bne     fail_11
         ldr     r1, =framebuffer
+        ldr     r2, =0x000039e7
         ldrh    r0, [r1, #2]
         cmp     r0, r2
         bne     fail_12
