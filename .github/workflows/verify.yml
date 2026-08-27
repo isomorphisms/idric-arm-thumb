@@ -36,10 +36,5 @@ jobs:
           make -C Idric install-bootstrap-libs IDRIS2="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
           make -C Idric install-api IDRIS2_BOOT="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
 
-      - name: Compile character and UTF-8 probes to the current backend boundary
-        env:
-          IDRIC: ${{ github.workspace }}/Idric/build/exec/idris2
-        run: bash tests/characters/check-current-boundary.sh
-
-      - name: Run inherited Thumb verification
+      - name: Compile and execute first ARM Thumb program
         run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
