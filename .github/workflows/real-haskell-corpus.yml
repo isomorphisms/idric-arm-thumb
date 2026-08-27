@@ -38,4 +38,4 @@ jobs:
           path: |
             build/real-haskell/metadata.tsv
             build/real-haskell/haskell.tsv
-            build/real-haskell/ghc/*.s
+            build/real-haskell/BranchCorpus.s
