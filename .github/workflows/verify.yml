@@ -36,5 +36,14 @@ jobs:
           make -C Idric install-bootstrap-libs IDRIS2="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
           make -C Idric install-api IDRIS2_BOOT="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
 
-      - name: Compile, inspect, assemble, and execute Thumb verification
-        run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+      - name: Build ARM Thumb backend driver
+        run: make driver IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Compile PrintASCII source to Thumb assembly
+        run: make build/exec/print-ascii.arm-thumb.S IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Link PrintASCII static ARM executable
+        run: make build/exec/print-ascii IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Execute PrintASCII and require exact byte x
+        run: make print-ascii-test IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"

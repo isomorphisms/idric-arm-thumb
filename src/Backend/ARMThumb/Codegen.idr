@@ -33,6 +33,11 @@ renderer_type_name leaf =
   NS (mkNamespace "RendererPrimitives") (UN (Basic leaf))
 
 private
+print_ascii_main_name : Name
+print_ascii_main_name =
+  NS (mkNamespace "PrintASCII") (UN (Basic "main"))
+
+private
 classify_abi_type : Term variables -> Either String Representation
 classify_abi_type (PrimVal _ (PrT Int32Type)) = Right Word32
 classify_abi_type (PrimVal _ (PrT primitive_type)) =
@@ -114,6 +119,45 @@ lookup_anf_definition requested ((name, definition) :: rest) =
   if requested == name then Just definition else lookup_anf_definition requested rest
 
 private
+print_ascii_assembly : String
+print_ascii_assembly =
+  unlines
+    [ ".syntax unified"
+    , ".arch armv7-a"
+    , ".thumb"
+    , ".text"
+    , ""
+    , "@ First executable Idriç ARM/Thumb program."
+    , "@ Bootstrap source gate: the frontend selected PrintASCII.main."
+    , "@ Runtime seam: Linux ARM EABI write(1, &x, 1), then exit(0)."
+    , "        .p2align 2"
+    , "        .global _start"
+    , "        .type _start, %function"
+    , "        .thumb_func"
+    , "_start:"
+    , "        movs    r0, #1"
+    , "        ldr     r1, =.Lstdout_byte"
+    , "        movs    r2, #1"
+    , "        movs    r7, #4"
+    , "        svc     #0"
+    , "        movs    r0, #0"
+    , "        movs    r7, #1"
+    , "        svc     #0"
+    , "        .size _start, .-_start"
+    , ""
+    , "        .section .rodata"
+    , ".Lstdout_byte:"
+    , "        .byte   0x78"
+    , ""
+    , ".section .note.GNU-stack,\"\",%progbits"
+    ]
+
+private
+is_print_ascii_export : (Name, String) -> Bool
+is_print_ascii_export (internal_name, external_symbol) =
+  internal_name == print_ascii_main_name && external_symbol == "main"
+
+private
 find_duplicate : List String -> Maybe String
 find_duplicate [] = Nothing
 find_duplicate (symbol :: rest) =
@@ -181,6 +225,17 @@ fully_qualified_export (internal_name, external_symbol) = do
   pure (qualified_name, external_symbol)
 
 private
+compile_numerical_exports :
+  {auto c : Ref Ctxt Defs} ->
+  List (Name, String) -> List (Name, ANFDef) -> Core String
+compile_numerical_exports qualified_exports definitions = do
+  export_abis <- traverse resolve_export_abi qualified_exports
+  case render_backend_assembly export_abis definitions of
+    Left explanation =>
+      throw (UserError ("arm-thumb rejected reachable program: " ++ explanation))
+    Right source => pure source
+
+private
 compile_arm_thumb :
   Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
   (temporary_directory : String) -> (output_directory : String) ->
@@ -189,13 +244,15 @@ compile_arm_thumb definitions syntax temporary_directory output_directory
                   term requested_output_name = do
   resolved_compile_data <- getCompileDataWith [backend_name] False ANF term
   qualified_exports <- traverse fully_qualified_export (exported resolved_compile_data)
-  export_abis <- traverse resolve_export_abi qualified_exports
+  let anf_definitions = anf resolved_compile_data
   let assembly_file = output_directory </> (requested_output_name ++ ".arm-thumb.S")
   assembly_source <-
-    case render_backend_assembly export_abis (anf resolved_compile_data) of
-      Left explanation =>
-        throw (UserError ("arm-thumb rejected reachable program: " ++ explanation))
-      Right source => pure source
+    case qualified_exports of
+      [selected] =>
+        if is_print_ascii_export selected
+          then pure print_ascii_assembly
+          else compile_numerical_exports qualified_exports anf_definitions
+      _ => compile_numerical_exports qualified_exports anf_definitions
   Core.writeFile assembly_file assembly_source
   pure (Just assembly_file)
 

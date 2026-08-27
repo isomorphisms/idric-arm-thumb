@@ -1,0 +1,5 @@
+module PrintUTF8
+
+%export "arm-thumb:main"
+main : IO ()
+main = putStr "λ"
