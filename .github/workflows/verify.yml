@@ -38,3 +38,6 @@ jobs:
 
       - name: Compile, inspect, assemble, and execute Thumb verification
         run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Execute RGB565 framebuffer oracle
+        run: sh tests/framebuffer/check.sh
