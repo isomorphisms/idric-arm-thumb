@@ -1,0 +1,20 @@
+module DisplayRepairMain
+
+import IB.DisplayRepair
+
+%default total
+
+private
+target_kind_text : copy_target_kind → String
+target_kind_text code_block = "code_block"
+target_kind_text preformatted_text = "preformatted_text"
+target_kind_text text_region = "text_region"
+
+%export "arm-thumb:main"
+main : IO ()
+main = do
+  let repair = copy_button "copy-target" "payload" text_region
+  putStrLn (repair_label repair)
+  putStrLn (copy_target_id repair)
+  putStrLn (copy_payload repair)
+  putStrLn (target_kind_text (copy_target_type repair))
