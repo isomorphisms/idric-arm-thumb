@@ -1,6 +1,6 @@
 # Branching and dispatch acceptance fixtures
 
-These five source fixtures are deliberately ahead of the current runtime-free
+These six source fixtures are deliberately ahead of the current runtime-free
 ARM/Thumb lowering surface. They are tests now, not claims that branches are
 implemented.
 
@@ -26,12 +26,20 @@ assembly and QEMU semantic checks.
 | `TokenDispatch64.idric` | 64 contiguous token kinds | identifier→atom, `+`→infix, `if`→control, `module`→declaration, EOF→EOF action | realistic lexer/token dispatch over a dense tag range |
 | `UnicodeRangeLookup.idric` | ordered range decisions | `λ`→Greek, U+0301→combining, U+4E00→CJK, U+1F600→emoji range, surrogate→invalid | Unicode tables are compressed/range-shaped, not million-way jump tables |
 | `ParserDispatch.idric` | nested parser-state × token-class cases | want-expression+atom→shift atom, have-expression+infix→shift infix, have-expression+EOF→accept | parser action dispatch; nested dense cases can become tables or mixed branch/table lowering |
+| `IPv4ProtocolDispatch.idric` | sparse dispatch on an incoming 8-bit protocol tag | 1→ICMP, 6→TCP, 17→UDP, 41→IPv6, 47→GRE, 50→ESP, 51→AH, 58→ICMPv6, 132→SCTP, other→unknown | real network protocol dispatch; compare sparse branch lowering against a table with default-filled holes |
 
 ## Important distinctions
 
 `AsciiClassify128` and `TokenDispatch64` are intentionally dense switches. They
 are good candidates for Thumb jump-table forms once constant-case lowering
 exists.
+
+`IPv4ProtocolDispatch` is deliberately sparse but bounded by a real one-byte
+wire field. It gives the backend a useful code-generation choice: a comparison
+tree, a compact jump table with default entries, or later a true handler-table
+lookup followed by an indirect branch/call when function-pointer lowering
+exists. The present fixture tests only selection of the handler/action slot; it
+does not pretend that indirect calls are implemented yet.
 
 `UnicodeRangeLookup` is intentionally the opposite. A Unicode scalar space has
 1,114,112 numeric positions, so a flat jump table would be wasteful. This
