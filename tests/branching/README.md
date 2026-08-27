@@ -1,6 +1,6 @@
 # Branching and dispatch acceptance fixtures
 
-These seven source fixtures are deliberately ahead of the current runtime-free
+These eight source fixtures are deliberately ahead of the current runtime-free
 ARM/Thumb lowering surface. They are tests now, not claims that branches are
 implemented.
 
@@ -28,6 +28,7 @@ assembly and QEMU semantic checks.
 | `ParserDispatch.idric` | nested parser-state × token-class cases | want-expression+atom→shift atom, have-expression+infix→shift infix, have-expression+EOF→accept | parser action dispatch; nested dense cases can become tables or mixed branch/table lowering |
 | `IPv4ProtocolDispatch.idric` | sparse dispatch on an incoming 8-bit protocol tag | 1→ICMP, 6→TCP, 17→UDP, 41→IPv6, 47→GRE, 50→ESP, 51→AH, 58→ICMPv6, 132→SCTP, other→unknown | real network protocol dispatch; compare sparse branch lowering against a table with default-filled holes |
 | `IBSubstringCatStep.idric` | one DFA transition for exact fixed-string search | state 0 + `c`→1, state 1 + `a`→2, state 2 + `t`→matched, failed prefix + `c`→restart | real IB-derived substring workload; compare ordinary conditional lowering with table/computed-branch or packed-state approaches without importing heap/string runtime into this fixture |
+| `FieldmouseRenderChoice.idric` | Field Mouse `choice` construction + constructor dispatch | undefined→0, null→1, true→2, false→3, number→4, text→5 | real Edriç application boundary: lower a `choice` tag/payload representation and dispatch on constructors rather than only switching on raw integer selectors |
 
 ## Important distinctions
 
@@ -57,3 +58,11 @@ streaming state transition rather than importing `String`/`List Char` into this
 runtime-free branch fixture. Repeated transitions are an exact search for the
 literal `cat`; later executable tests should compare this ordinary DFA lowering
 with the table/computed-branch experiment in #9 and packed-bit search in #10.
+
+`FieldmouseRenderChoice` comes directly from Field Mouse's `value`/`render`
+boundary at
+https://github.com/isomorphisms/fieldmouse/blob/3ad88740df66e929d5cb195af6de255336afef7e/Fieldmouse.idric#L348-L355.
+It preserves the five-constructor choice shape and the Boolean subcases, while
+using Float32/Int32 stand-in payloads for the current Double/String payloads so
+the fixture tests constructor representation and tag dispatch without pulling
+those unrelated runtime surfaces into the ARM/Thumb experiment.
