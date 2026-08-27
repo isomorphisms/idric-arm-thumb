@@ -1,0 +1,41 @@
+name: real-haskell-branch-corpus
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  haskell-microbench:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out backend
+        uses: actions/checkout@v4
+
+      - name: Install GHC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ghc
+
+      - name: Run rough branch microbenchmarks
+        run: |
+          tests/real-haskell/bench/run.sh
+          {
+            echo '### Rough GHC -O2 branch-corpus microbenchmark'
+            echo
+            echo '```tsv'
+            cat build/real-haskell/metadata.tsv
+            echo
+            cat build/real-haskell/haskell.tsv
+            echo '```'
+            echo
+            echo 'GitHub-hosted runner timings are noisy. These are isolated decision kernels, not whole-library timings and not yet an Idriç comparison.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve benchmark and GHC assembly
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-haskell-branch-benchmark
+          path: |
+            build/real-haskell/metadata.tsv
+            build/real-haskell/haskell.tsv
+            build/real-haskell/ghc/*.s

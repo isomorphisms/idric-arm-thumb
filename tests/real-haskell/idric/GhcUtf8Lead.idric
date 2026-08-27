@@ -1,0 +1,28 @@
+module GhcUtf8Lead
+
+import RendererPrimitives
+
+-- Outer lead-byte decision from GHC.Internal.Encoding.UTF8.utf8DecodeChar#:
+-- https://github.com/ghc/ghc/blob/cd653714596108ebf47450202b6748c20bb53799/libraries/ghc-internal/src/GHC/Internal/Encoding/UTF8.hs
+--
+-- This first fixture deliberately stops before continuation-byte validation.
+-- Input follows the original Word8 precondition (0..255).  Result slots are
+-- the selected UTF-8 width 1..4, or 0 for an invalid lead byte.
+%export "arm-thumb:ghc_utf8_lead_width"
+ghc_utf8_lead_width : Float32Buffer -> Int32 -> Float32
+ghc_utf8_lead_width values byte =
+  let width : Int32
+      width =
+        if byte <= 127
+          then 1
+          else if byte >= 192 && byte <= 223
+            then 2
+            else if byte >= 224 && byte <= 239
+              then 3
+              else if byte >= 240 && byte <= 248
+                then 4
+                else 0
+  in float32_buffer_load values width
+
+main : IO ()
+main = pure ()

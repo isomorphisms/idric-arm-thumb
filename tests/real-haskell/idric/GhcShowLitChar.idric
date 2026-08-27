@@ -1,0 +1,37 @@
+module GhcShowLitChar
+
+import RendererPrimitives
+
+-- Decision-only reduction of GHC.Internal.Show.showLitChar:
+-- https://github.com/ghc/ghc/blob/cd653714596108ebf47450202b6748c20bb53799/libraries/ghc-internal/src/GHC/Internal/Show.hs
+--
+-- Slots: 0 numeric escape, 1 DEL, 2 backslash, 3 printable literal,
+-- 4 bell, 5 backspace, 6 form feed, 7 newline, 8 carriage return,
+-- 9 tab, 10 vertical tab, 11 SO, 12 generic ASCII-name escape.
+%export "arm-thumb:ghc_show_lit_char"
+ghc_show_lit_char : Float32Buffer -> Int32 -> Float32
+ghc_show_lit_char values code =
+  let action : Int32
+      action =
+        if code > 127
+          then 0
+          else case code of
+            127 => 1
+            92 => 2
+            _ =>
+              if code >= 32
+                then 3
+                else case code of
+                  7 => 4
+                  8 => 5
+                  12 => 6
+                  10 => 7
+                  13 => 8
+                  9 => 9
+                  11 => 10
+                  14 => 11
+                  _ => 12
+  in float32_buffer_load values action
+
+main : IO ()
+main = pure ()

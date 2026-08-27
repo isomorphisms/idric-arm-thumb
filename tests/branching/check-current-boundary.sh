@@ -5,14 +5,17 @@ set -euo pipefail
 
 mkdir -p build/exec/branching-boundary
 
-for source in tests/branching/*.idric; do
-  name="$(basename "$source" .idric)"
+for source in tests/branching/*.idric tests/real-haskell/idric/*.idric; do
+  name="${source#tests/}"
+  name="${name%.idric}"
+  name="${name//\//-}"
+  source_dir="$(dirname "$source")"
   log="build/exec/branching-boundary/${name}.log"
 
   if IDRIS2_PATH="$PWD/build/ttc:${IDRIS2_PATH:-}" \
       ./build/exec/idric-arm-thumb \
         --cg arm-thumb \
-        --source-dir tests/branching \
+        --source-dir "$source_dir" \
         "$source" \
         -o "$name" >"$log" 2>&1; then
     cat "$log"
@@ -33,4 +36,4 @@ for source in tests/branching/*.idric; do
   fi
 done
 
-echo 'All branching/dispatch fixtures reached the current control-flow lowering boundary.'
+echo 'All branching/dispatch and real-Haskell fixtures reached the current control-flow lowering boundary.'
