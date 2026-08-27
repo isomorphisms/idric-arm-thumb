@@ -85,6 +85,19 @@ inspect: examples $(RGB565_ASSEMBLY)
 	grep -Eq 'mla[[:space:]]+r1, r3, r2, r1' $(RGB565_ASSEMBLY)
 	grep -Eq 'add\.w[[:space:]]+r1, r1, r2, lsl #1' $(RGB565_ASSEMBLY)
 	grep -Eq 'strh[[:space:]]+r2, \[r1\]' $(RGB565_ASSEMBLY)
+	grep -q '^rgb565_fill_rect_generated:' $(RGB565_ASSEMBLY)
+	grep -Eq 'cmp[[:space:]]+r0, #0' $(RGB565_ASSEMBLY)
+	grep -Eq 'cmp[[:space:]]+r3, #0' $(RGB565_ASSEMBLY)
+	grep -Eq 'strh[[:space:]]+r2, \[r12\]' $(RGB565_ASSEMBLY)
+	grep -Eq 'adds[[:space:]]+r12, r12, #2' $(RGB565_ASSEMBLY)
+	grep -Eq 'subs[[:space:]]+r0, r0, #1' $(RGB565_ASSEMBLY)
+	grep -Eq 'bne[[:space:]]+2b' $(RGB565_ASSEMBLY)
+	grep -Eq 'ldr[[:space:]]+r0, \[r0, #16\]' $(RGB565_ASSEMBLY)
+	grep -Eq 'subs[[:space:]]+r3, r3, #1' $(RGB565_ASSEMBLY)
+	grep -Eq 'bne[[:space:]]+1b' $(RGB565_ASSEMBLY)
+	@inner="$$(awk '/^2:$$/{inside=1; next} inside && /bne[[:space:]]+2b/{exit} inside {print}' $(RGB565_ASSEMBLY))"; \
+		echo "$$inner" | grep -Eq 'strh[[:space:]]+r2, \[r12\]'; \
+		test -z "$$(echo "$$inner" | grep -E '^[[:space:]]+(cmp|ldr|bl)[[:space:]]' || true)"
 	@test -z "$$(grep -E '^[[:space:]]+bl[[:space:]]' $(RGB565_ASSEMBLY) || true)"
 
 reject-invalid-int: $(DRIVER) tests/source/InvalidInt.idric
