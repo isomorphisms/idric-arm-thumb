@@ -64,6 +64,73 @@ _start:
         cmp     r0, r2
         bne     fail_10
 
+        @ Generated fillRect matches the handwritten oracle exactly:
+        @ x=1, y=0, width=2, height=2, pixel=0x39e7.
+        ldr     r0, =surface
+        ldr     r1, =0x000039e7
+        bl      rgb565_fill_rect_generated
+
+        ldr     r1, =0x000039e7
+        cmp     r0, r1
+        bne     fail_11
+        ldr     r1, =framebuffer
+        ldr     r2, =0x000039e7
+        ldrh    r0, [r1, #2]
+        cmp     r0, r2
+        bne     fail_12
+        ldrh    r0, [r1, #4]
+        cmp     r0, r2
+        bne     fail_13
+        ldrh    r0, [r1, #14]
+        cmp     r0, r2
+        bne     fail_14
+        ldrh    r0, [r1, #16]
+        cmp     r0, r2
+        bne     fail_15
+
+        @ Everything outside the rectangle, including row padding, survives.
+        ldrh    r0, [r1, #0]
+        ldr     r2, =0x0000f800
+        cmp     r0, r2
+        bne     fail_16
+        ldrh    r0, [r1, #6]
+        cmp     r0, #0
+        bne     fail_17
+        ldrh    r0, [r1, #8]
+        cmp     r0, #0
+        bne     fail_18
+        ldrh    r0, [r1, #10]
+        cmp     r0, #0
+        bne     fail_19
+        ldrh    r0, [r1, #12]
+        cmp     r0, #0
+        bne     fail_20
+        ldrh    r0, [r1, #18]
+        cmp     r0, #0
+        bne     fail_21
+        ldrh    r0, [r1, #20]
+        cmp     r0, #0
+        bne     fail_22
+        ldrh    r0, [r1, #22]
+        cmp     r0, #0
+        bne     fail_23
+
+        @ Row 2 and outer sentinels also survive the two-row fill.
+        ldrh    r0, [r1, #30]
+        ldr     r2, =0x000007e0
+        cmp     r0, r2
+        bne     fail_24
+        ldr     r1, =guard_before
+        ldrh    r0, [r1]
+        ldr     r2, =0x0000a55a
+        cmp     r0, r2
+        bne     fail_25
+        ldr     r1, =guard_after
+        ldrh    r0, [r1]
+        ldr     r2, =0x00005aa5
+        cmp     r0, r2
+        bne     fail_26
+
         movs    r0, #0
         b       exit
 
@@ -76,7 +143,23 @@ fail_6:  movs r0, #6;  b exit
 fail_7:  movs r0, #7;  b exit
 fail_8:  movs r0, #8;  b exit
 fail_9:  movs r0, #9;  b exit
-fail_10: movs r0, #10
+fail_10: movs r0, #10; b exit
+fail_11: movs r0, #11; b exit
+fail_12: movs r0, #12; b exit
+fail_13: movs r0, #13; b exit
+fail_14: movs r0, #14; b exit
+fail_15: movs r0, #15; b exit
+fail_16: movs r0, #16; b exit
+fail_17: movs r0, #17; b exit
+fail_18: movs r0, #18; b exit
+fail_19: movs r0, #19; b exit
+fail_20: movs r0, #20; b exit
+fail_21: movs r0, #21; b exit
+fail_22: movs r0, #22; b exit
+fail_23: movs r0, #23; b exit
+fail_24: movs r0, #24; b exit
+fail_25: movs r0, #25; b exit
+fail_26: movs r0, #26
 
 exit:
         movs    r7, #1

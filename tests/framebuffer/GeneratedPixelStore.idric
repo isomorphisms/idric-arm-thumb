@@ -7,5 +7,10 @@ rgb565_put_pixel_generated : RGB565Surface -> Int32 -> Int32 -> Int32 -> Int32
 rgb565_put_pixel_generated surface x y pixel =
   rgb565_surface_store surface x y pixel
 
+%export "arm-thumb:rgb565_fill_rect_generated"
+rgb565_fill_rect_generated : RGB565Surface -> Int32 -> Int32
+rgb565_fill_rect_generated surface pixel =
+  rgb565_surface_fill_rect surface 1 0 2 2 pixel
+
 main : IO ()
 main = pure ()

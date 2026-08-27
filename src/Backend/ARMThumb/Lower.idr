@@ -25,6 +25,7 @@ data RawInstruction
   | RawFloatBinary FloatBinaryOperation Int Int Int
   | RawFloatUnary FloatUnaryOperation Int Int
   | RawStoreRGB565 Int Int Int Int Int
+  | RawFillRGB565 Int Int Int Int Int Int Int
 
 private
 record BuildState where
@@ -81,6 +82,7 @@ data RendererPrimitive
   | Binary FloatBinaryOperation
   | Unary FloatUnaryOperation
   | RGB565Store
+  | RGB565Fill
 
 private
 renderer_primitive : Name -> Maybe RendererPrimitive
@@ -103,7 +105,9 @@ renderer_primitive name =
                   then Just (Unary SquareRootFloat32)
                   else if name == renderer_name "rgb565_surface_store"
                     then Just RGB565Store
-                    else Nothing
+                    else if name == renderer_name "rgb565_surface_fill_rect"
+                      then Just RGB565Fill
+                      else Nothing
 
 private
 add_constraint : RepresentationConstraint -> BuildState -> BuildState
@@ -214,6 +218,19 @@ add_rgb565_store destination surface x y pixel state =
             (add_constraint (HasRepresentation pixel Word32) state)))))
 
 private
+add_rgb565_fill :
+  Int -> Int -> Int -> Int -> Int -> Int -> Int -> BuildState -> BuildState
+add_rgb565_fill destination surface x y width height pixel state =
+  add_instruction (RawFillRGB565 destination surface x y width height pixel)
+    (add_constraint (HasRepresentation destination Word32)
+      (add_constraint (HasRepresentation surface RGB565SurfacePointer)
+        (add_constraint (HasRepresentation x Word32)
+          (add_constraint (HasRepresentation y Word32)
+            (add_constraint (HasRepresentation width Word32)
+              (add_constraint (HasRepresentation height Word32)
+                (add_constraint (HasRepresentation pixel Word32) state)))))))
+
+private
 lower_external :
   Int -> Name -> List AVar -> BuildState -> Either String BuildState
 lower_external destination name arguments state =
@@ -267,6 +284,25 @@ lower_external destination name arguments state =
           Left
             ("Renderer primitive `" ++ show name ++
              "` requires four local operands, got " ++ show arguments)
+    Just RGB565Fill =>
+      case arguments of
+        [ ALocal surface, ALocal x, ALocal y
+        , ALocal width, ALocal height, ALocal pixel
+        ] => do
+          require_bound "RGB565 surface" surface state
+          require_bound "RGB565 rectangle x" x state
+          require_bound "RGB565 rectangle y" y state
+          require_bound "RGB565 rectangle width" width state
+          require_bound "RGB565 rectangle height" height state
+          require_bound "RGB565 pixel" pixel state
+          with_destination <- bind_variable "Let destination" destination state
+          Right
+            (add_rgb565_fill
+              destination surface x y width height pixel with_destination)
+        _ =>
+          Left
+            ("Renderer primitive `" ++ show name ++
+             "` requires six local operands, got " ++ show arguments)
 
 private
 lower_value : Int -> ANF -> BuildState -> Either String BuildState
@@ -438,6 +474,25 @@ resolve_instruction slots constraints (RawStoreRGB565 destination surface x y pi
   expect_representation "RGB565 y coordinate" Word32 y_local
   expect_representation "RGB565 pixel" Word32 pixel_local
   Right (StoreRGB565 destination_local surface_local x_local y_local pixel_local)
+resolve_instruction slots constraints
+                    (RawFillRGB565 destination surface x y width height pixel) = do
+  destination_local <- resolve_local slots constraints destination
+  surface_local <- resolve_local slots constraints surface
+  x_local <- resolve_local slots constraints x
+  y_local <- resolve_local slots constraints y
+  width_local <- resolve_local slots constraints width
+  height_local <- resolve_local slots constraints height
+  pixel_local <- resolve_local slots constraints pixel
+  expect_representation "RGB565 fill result" Word32 destination_local
+  expect_representation "RGB565 surface" RGB565SurfacePointer surface_local
+  expect_representation "RGB565 rectangle x" Word32 x_local
+  expect_representation "RGB565 rectangle y" Word32 y_local
+  expect_representation "RGB565 rectangle width" Word32 width_local
+  expect_representation "RGB565 rectangle height" Word32 height_local
+  expect_representation "RGB565 pixel" Word32 pixel_local
+  Right
+    (FillRGB565 destination_local surface_local x_local y_local
+      width_local height_local pixel_local)
 
 private
 resolve_instructions :

@@ -56,6 +56,18 @@ float_unary_mnemonic AbsoluteFloat32 = "vabs.f32"
 float_unary_mnemonic SquareRootFloat32 = "vsqrt.f32"
 
 private
+rgb565_start_address : Local -> Local -> Local -> List String
+rgb565_start_address surface x y =
+  load_word "r0" surface ++
+  [ "        ldr     r1, [r0, #0]"
+  , "        ldr     r2, [r0, #16]"
+  ] ++
+  load_word "r3" y ++
+  [ "        mla     r1, r3, r2, r1" ] ++
+  load_word "r2" x ++
+  [ "        add.w   r1, r1, r2, lsl #1" ]
+
+private
 emit_instruction : Instruction -> List String
 emit_instruction (Copy destination source) =
   load_word "r0" source ++ store_word "r0" destination
@@ -78,16 +90,37 @@ emit_instruction (FloatUnary operation destination value) =
   [ "        " ++ float_unary_mnemonic operation ++ " s0, s0" ] ++
   store_float "s0" destination
 emit_instruction (StoreRGB565 destination surface x y pixel) =
-  load_word "r0" surface ++
-  [ "        ldr     r1, [r0, #0]"
-  , "        ldr     r2, [r0, #16]"
-  ] ++
-  load_word "r3" y ++
-  [ "        mla     r1, r3, r2, r1" ] ++
-  load_word "r2" x ++
-  [ "        add.w   r1, r1, r2, lsl #1" ] ++
+  rgb565_start_address surface x y ++
   load_word "r2" pixel ++
   [ "        strh    r2, [r1]" ] ++
+  store_word "r2" destination
+emit_instruction (FillRGB565 destination surface x y width height pixel) =
+  rgb565_start_address surface x y ++
+  load_word "r2" pixel ++
+  load_word "r0" width ++
+  [ "        cmp     r0, #0"
+  , "        ble     3f"
+  ] ++
+  load_word "r3" height ++
+  [ "        cmp     r3, #0"
+  , "        ble     3f"
+  , "1:"
+  ] ++
+  load_word "r0" width ++
+  [ "        mov     r12, r1"
+  , "2:"
+  , "        strh    r2, [r12]"
+  , "        adds    r12, r12, #2"
+  , "        subs    r0, r0, #1"
+  , "        bne     2b"
+  ] ++
+  load_word "r0" surface ++
+  [ "        ldr     r0, [r0, #16]"
+  , "        add     r1, r1, r0"
+  , "        subs    r3, r3, #1"
+  , "        bne     1b"
+  , "3:"
+  ] ++
   store_word "r2" destination
 
 private
@@ -167,6 +200,21 @@ validate_instruction function (StoreRGB565 destination surface x y pixel) = do
   expect_representation "RGB565 surface" RGB565SurfacePointer surface
   expect_representation "RGB565 x coordinate" Word32 x
   expect_representation "RGB565 y coordinate" Word32 y
+  expect_representation "RGB565 pixel" Word32 pixel
+validate_instruction function (FillRGB565 destination surface x y width height pixel) = do
+  validate_local_home function destination
+  validate_local_home function surface
+  validate_local_home function x
+  validate_local_home function y
+  validate_local_home function width
+  validate_local_home function height
+  validate_local_home function pixel
+  expect_representation "RGB565 fill result" Word32 destination
+  expect_representation "RGB565 surface" RGB565SurfacePointer surface
+  expect_representation "RGB565 rectangle x" Word32 x
+  expect_representation "RGB565 rectangle y" Word32 y
+  expect_representation "RGB565 rectangle width" Word32 width
+  expect_representation "RGB565 rectangle height" Word32 height
   expect_representation "RGB565 pixel" Word32 pixel
 
 private

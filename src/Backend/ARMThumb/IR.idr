@@ -68,8 +68,8 @@ Show FloatUnaryOperation where
   show AbsoluteFloat32 = "absolute"
   show SquareRootFloat32 = "square-root"
 
-||| Validated runtime-free straight-line IR. Each instruction fixes the
-||| representation required of its operands before assembly emission.
+||| Validated runtime-free IR. Most instructions are straight-line; FillRGB565
+||| is the deliberately narrow first structured raster loop.
 public export
 data Instruction
   = Copy Local Local
@@ -78,6 +78,7 @@ data Instruction
   | FloatBinary FloatBinaryOperation Local Local Local
   | FloatUnary FloatUnaryOperation Local Local
   | StoreRGB565 Local Local Local Local Local
+  | FillRGB565 Local Local Local Local Local Local Local
 
 public export
 Show Instruction where
@@ -95,6 +96,10 @@ Show Instruction where
   show (StoreRGB565 destination surface x y pixel) =
     show destination ++ " = rgb565-store " ++
     show surface ++ " " ++ show x ++ " " ++ show y ++ " " ++ show pixel
+  show (FillRGB565 destination surface x y width height pixel) =
+    show destination ++ " = rgb565-fill-rect " ++
+    show surface ++ " " ++ show x ++ " " ++ show y ++ " " ++
+    show width ++ " " ++ show height ++ " " ++ show pixel
 
 ||| One C-callable, closure-free runtime-free leaf.
 public export
