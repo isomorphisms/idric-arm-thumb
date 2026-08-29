@@ -1,0 +1,8 @@
+module InvalidInt
+
+%export "arm-thumb:invalid_int"
+invalid_int : Int -> Int
+invalid_int value = value
+
+main : IO ()
+main = pure ()
