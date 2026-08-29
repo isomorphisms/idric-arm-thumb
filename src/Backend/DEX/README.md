@@ -17,6 +17,12 @@ used by each opcode, and an Edriç-specific disposition for every instruction.
 The initial binary target is conservatively DEX 035; newer dynamic-call opcodes
 stay out until a concrete requirement justifies them.
 
+Also see [`PSEUDO_REGISTER_IR.md`](./PSEUDO_REGISTER_IR.md) for a deliberately
+temporary experiment: a typed pseudo-register representation that may preserve
+mathematical operations such as Einstein-index contraction and tensor product
+before DEX, ARM Thumb, SIMD, or GPU lowering chooses an execution strategy. It
+is explicitly allowed to disappear if it duplicates existing checked ANF/IR.
+
 ## First slice
 
 Keep the bootstrap small and inspectable:
