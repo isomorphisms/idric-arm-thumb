@@ -27,10 +27,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: isomorphisms/bioawk
-          ref: sample-data
+          ref: 94a826e0dae39178db1fe5a0e07e764caac37e5e
           path: _bioawk
       - name: Run shared branch/search biology gate
-        uses: isomorphisms/ai-ci/biology@biology-search-contrast-gym
+        uses: isomorphisms/ai-ci/biology@05f3976a36a4b9829a2748995a686b103cfdab18
         with:
           corpus_root: _bioawk/sample data
           candidate: ${{ steps.candidate.outputs.path }}
