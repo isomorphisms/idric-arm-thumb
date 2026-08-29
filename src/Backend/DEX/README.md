@@ -11,6 +11,12 @@ The immediate goal is therefore **one Android application-code target without
 per-ABI native libraries**. APK/AAB packaging, resources, manifest handling, and
 signing remain separate layers around `classes.dex`.
 
+Before adding more lowering, see [`OPCODES.md`](./OPCODES.md): it inventories all
+256 opcode slots, the three payload pseudo-instructions, the instruction formats
+used by each opcode, and an Edriç-specific disposition for every instruction.
+The initial binary target is conservatively DEX 035; newer dynamic-call opcodes
+stay out until a concrete requirement justifies them.
+
 ## First slice
 
 Keep the bootstrap small and inspectable:
