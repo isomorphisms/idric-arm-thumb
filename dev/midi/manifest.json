@@ -1,0 +1,38 @@
+{
+  "format": "Standard MIDI File type 0",
+  "ticks_per_beat": 480,
+  "general_midi_program": 80,
+  "general_midi_program_name": "Lead 1 (square)",
+  "files": [
+    {
+      "file": "beethoven-5-opening.mid",
+      "composer_or_source": "Ludwig van Beethoven",
+      "title": "Symphony No. 5, first-movement opening motto",
+      "bpm": 108,
+      "note_count": 16,
+      "bytes": 211,
+      "sha256": "7bbf46df98be8d2f14f5d6f4fa471cd8709a01b6d177735d9f9c94a2e624b4b6",
+      "provenance": "public-domain composition; newly encoded monophonic development excerpt"
+    },
+    {
+      "file": "dvorak-new-world-largo.mid",
+      "composer_or_source": "Antonín Dvořák",
+      "title": "Symphony No. 9 From the New World, Largo theme",
+      "bpm": 46,
+      "note_count": 44,
+      "bytes": 458,
+      "sha256": "03612b95d3709ef0289d0ca4eab90d4490d24a07b71a1d3165da01592cf9cd25",
+      "provenance": "public-domain composition; newly encoded monophonic development excerpt, transposed to E major"
+    },
+    {
+      "file": "simple-gifts.mid",
+      "composer_or_source": "Joseph Brackett / Shaker tradition",
+      "title": "Simple Gifts",
+      "bpm": 126,
+      "note_count": 82,
+      "bytes": 806,
+      "sha256": "f0b501522aa339bf27c99d6f063d631d3d69d22fc747538e35a2e61e180e3dde",
+      "provenance": "public-domain 1848 Shaker melody later used by Aaron Copland; this is not Copland's arrangement"
+    }
+  ]
+}
