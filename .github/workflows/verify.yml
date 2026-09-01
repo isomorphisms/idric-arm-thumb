@@ -34,7 +34,7 @@ jobs:
         run: ./Idric/edric bootstrap
 
       - name: Install pinned Chez codegen data
-        run: make -C Idric/support/chez install
+        run: make -C Idric/support/chez install IDRIS2_VERSION=0.8.0
 
       - name: Install pinned Idriç libraries and compiler API
         run: |
