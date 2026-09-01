@@ -251,7 +251,7 @@ lower_value destination (APrimVal _ (I32 value)) state = do
   Right (add_word_constant destination (cast value) with_destination)
 lower_value destination (APrimVal _ (I value)) state =
   Left
-    ("Idriç Int is 64-bit in the pinned compiler; use Int32 in this " ++
+    ("Idriç Int is 64-bit in the current compiler; use Int32 in this " ++
      "one-word ARMv7 ABI (got literal " ++ show value ++ ")")
 lower_value destination (AExtPrim _ _ name arguments) state =
   lower_external destination name arguments state

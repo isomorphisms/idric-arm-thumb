@@ -22,18 +22,23 @@ evaluate_affine a x b =
   float32_add (float32_multiply a x) b
 ```
 
-The backend is pinned to Idriç commit:
+Active integration follows the declared Idriç branch:
 
 ```text
-081b9cde0591154839fb5d80d76e5570e0436300
+Idriç
 ```
 
-That compiler deliberately remains implemented on the current Idris 2 internals, so this backend uses its existing `Compiler.ANF` custom-codegen seam instead of creating a second competing Idriç IR.
+Each run records the exact compiler SHA resolved from that branch. The first
+green compiler revision, `081b9cde0591154839fb5d80d76e5570e0436300`, remains
+historical evidence rather than the active selector. The compiler deliberately
+remains implemented on the current Idris 2 internals, so this backend uses its
+existing `Compiler.ANF` custom-codegen seam instead of creating a second
+competing Idriç IR.
 
 ## Executable DEX pseudo-target
 
 The same driver now registers `--cg dex`. It compiles exported `Int32` leaves
-through the pinned compiler's checked `Compiler.ANF`, lowers them into a small
+through the current declared compiler's checked `Compiler.ANF`, lowers them into a small
 typed DEX plan, and writes deterministic DEX 035 directly. Smali is emitted only
 as readable evidence.
 
@@ -64,15 +69,17 @@ checked and lowered boundaries inspectable. See
 
 ## Build and verify
 
-Build the pinned Idriç compiler and install its compiler API/libraries, then run:
+Build the declared Idriç compiler and install its compiler API/libraries, then run:
 
 ```sh
 make verify IDRIC=/path/to/Idric/build/exec/idris2
 ```
 
-`make verify` checks the compiler revision, typechecks and builds the custom driver, compiles the real `.idric` affine fixture through `--cg arm-thumb`, requires `vmul.f32` and `vadd.f32` in the generated assembly, assembles it with Clang for `armv7a-linux-androideabi21`, and checks that the result is an ELF32 ARM object.
+`make verify` records the resolved compiler revision, typechecks and builds the custom driver, compiles the real `.idric` affine fixture through `--cg arm-thumb`, requires `vmul.f32` and `vadd.f32` in the generated assembly, assembles it with Clang for `armv7a-linux-androideabi21`, and checks that the result is an ELF32 ARM object.
 
-GitHub Actions performs that path from a clean checkout by bootstrapping the exact pinned Idriç revision first.
+GitHub Actions performs that path from a clean checkout by resolving and
+bootstrapping the current `Idriç` branch. Drift fails at its real stage; CI does
+not retry the historical green SHA.
 
 ## Current boundary
 

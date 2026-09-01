@@ -15,9 +15,9 @@ write_not_verified() {
     printf '%s\n' 'source checked        PASS'
     printf '%s\n' 'DEX generated         PASS'
     printf '%s\n' 'DEX parser validation PASS'
-    printf '%s\n' 'ART loaded             NOT_VERIFIED'
-    printf '%s\n' 'ART executed           NOT_VERIFIED'
-    printf '%s\n' 'result checked         NOT_VERIFIED'
+    printf '%s\n' 'ART loaded             SKIP prerequisite=device_or_emulator'
+    printf '%s\n' 'ART executed           SKIP prerequisite=ART_loaded'
+    printf '%s\n' 'result checked         SKIP prerequisite=ART_executed'
     printf 'reason                 %s\n' "$reason"
     printf 'backend revision       %s\n' "$backend_revision"
   } >"$receipt"
@@ -63,8 +63,8 @@ if [ "$runtime_status" -ne 0 ]; then
     result_status=FAIL
   else
     loaded_status=FAIL
-    executed_status=NOT_VERIFIED
-    result_status=NOT_VERIFIED
+    executed_status=SKIP
+    result_status=SKIP
   fi
   {
     printf '%s\n' 'source checked        PASS'

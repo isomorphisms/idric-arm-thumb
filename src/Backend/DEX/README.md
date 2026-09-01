@@ -8,7 +8,7 @@ The executable path is now:
 
 ```text
 .idric source
-  -> pinned Idriç parser, elaborator, and type checker
+  -> current declared Idriç parser, elaborator, and type checker
   -> Compiler.ANF
   -> Backend.DEX.IR method plan
   -> Backend.DEX.Encode
@@ -21,8 +21,9 @@ compiler path.
 
 ## Checked compiler handoff
 
-The custom code generator uses `getCompileDataWith ["dex"] False ANF` from
-Idriç revision `081b9cde0591154839fb5d80d76e5570e0436300`. It accepts only
+The custom code generator uses `getCompileDataWith ["dex"] False ANF` from the
+Idriç revision resolved from the declared `Idriç` branch. The first green
+historical revision was `081b9cde0591154839fb5d80d76e5570e0436300`. It accepts only
 functions selected by `%export "dex:<method_name>"` after elaboration.
 
 The first source ABI is deliberately explicit:
@@ -33,7 +34,7 @@ The first source ABI is deliberately explicit:
 
 The lowerer consumes `Compiler.ANF`, not source text. It currently recognizes
 checked Int32 constants, locals/lets, `Add Int32Type`, `Sub Int32Type`, and
-`Mul Int32Type`. The pinned compiler retains overloaded Int32 `<` as the
+`Mul Int32Type`. The currently tested compiler retains overloaded Int32 `<` as the
 resolved checked name `Prelude.EqOrd.<`; the bridge lowers that exact checked
 call and its Boolean 0/1 case form. Other named calls are rejected.
 
@@ -90,7 +91,7 @@ baksmali, and compares that disassembly with the smali-oracle artifact.
 `make dex-device` additionally uses a connected Android device or emulator. It
 loads the directly encoded candidate beside a separately assembled test runner
 and invokes it with Android's `app_process`. Absence of a device is reported as
-`NOT_VERIFIED` with exit status 2. CI provides a bounded API-29 x86-64 emulator
+`SKIP` with exit status 2. CI provides a bounded API-29 x86-64 emulator
 job; it does not require a permanently attached phone.
 
 See [`AUDIT.md`](./AUDIT.md) for the starting boundary and
