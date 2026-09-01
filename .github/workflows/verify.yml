@@ -31,6 +31,9 @@ jobs:
       - name: Bootstrap pinned Idriç
         run: ./Idric/edric bootstrap
 
+      - name: Install pinned Chez codegen data
+        run: make -C Idric/support/chez install
+
       - name: Install pinned Idriç libraries and compiler API
         run: |
           make -C Idric install-bootstrap-libs IDRIS2="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
