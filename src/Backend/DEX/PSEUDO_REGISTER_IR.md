@@ -2,6 +2,22 @@
 
 This note records a **provisional** idea suggested by studying DEX. It is not a commitment to a new permanent IR. The pseudo-register layer may later shrink, merge into existing checked ANF/IR, split into more precise forms, or disappear entirely if it proves redundant.
 
+## Result of the first executable DEX slice
+
+Do not promote this experiment for the ordinary Int32 backend. The pinned
+compiler's checked `Compiler.ANF` already supplies named temporaries, lets,
+primitive operations, and cases. A second target-independent pseudo-register
+form would only rename those temporaries and duplicate lowering logic.
+
+The executable backend therefore lowers ANF directly into a deliberately
+target-specific `Backend.DEX.IR`. That plan exists to select DEX registers,
+labels, instruction formats, and class/method representation; it is not a new
+semantic compiler layer and is not shared with ARM Thumb.
+
+This conclusion does not decide how future tensor/index structure should be
+preserved. Such structure can justify a compiler form only when checked source
+operations actually require it. It is not a prerequisite for Int32 DEX work.
+
 The useful part of DEX here is its simple, inspectable register-machine shape. The goal is to borrow that clarity without importing DEX/Java semantics into Edriç.
 
 ## Shape

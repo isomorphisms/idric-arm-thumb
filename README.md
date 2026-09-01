@@ -30,6 +30,29 @@ The backend is pinned to Idriç commit:
 
 That compiler deliberately remains implemented on the current Idris 2 internals, so this backend uses its existing `Compiler.ANF` custom-codegen seam instead of creating a second competing Idriç IR.
 
+## Executable DEX pseudo-target
+
+The same driver now registers `--cg dex`. It compiles exported `Int32` leaves
+through the pinned compiler's checked `Compiler.ANF`, lowers them into a small
+typed DEX plan, and writes deterministic DEX 035 directly. Smali is emitted only
+as readable evidence.
+
+```sh
+make dex-test IDRIC=/path/to/Idric/build/exec/idris2
+```
+
+The fixture covers 12+7, subtraction, multiplication, moves, both directions of
+an integer branch, negative values, and constant-encoding cutovers. Tests check
+the header/signature/checksum, reject malformed input, disassemble with pinned
+baksmali, compare with a smali oracle, and regenerate byte-identically. A
+separate Android emulator/device path executes the candidate on ART.
+
+The primary artifact is `build/exec/classes.dex`. Its adjacent
+`classes.checked.anf`, `classes.dex.plan`, and `classes.smali` files make the
+checked and lowered boundaries inspectable. See
+[`src/Backend/DEX/README.md`](src/Backend/DEX/README.md) and the concise
+[`src/Backend/DEX/AUDIT.md`](src/Backend/DEX/AUDIT.md).
+
 ## Target ABI
 
 - Android `armeabi-v7a`
