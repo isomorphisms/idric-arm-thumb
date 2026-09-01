@@ -14,13 +14,13 @@ if [[ -n ${IDRIC_SCHEME:-} ]]; then
   export PATH="$(dirname -- "$IDRIC_SCHEME"):$PATH"
 fi
 
-mkdir -p "$repo_root/build/exec"
-: > "$log"
-
 backend_sha=$(git -C "$repo_root" rev-parse HEAD)
 compiler_sha=$(git -C "$idric_repo" rev-parse HEAD)
 backend_dirty=$(if git -C "$repo_root" status --porcelain | grep -q .; then printf dirty; else printf clean; fi)
 compiler_dirty=$(if git -C "$idric_repo" status --porcelain | grep -q .; then printf dirty; else printf clean; fi)
+
+mkdir -p "$repo_root/build/exec"
+: > "$log"
 
 write_receipt() {
   outcome=$1
