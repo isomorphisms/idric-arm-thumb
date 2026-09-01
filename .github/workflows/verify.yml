@@ -2,7 +2,7 @@ name: verify
 
 on:
   push:
-    branches: [idric-ir-first-slice, dex-backend, dex-executable-first-slice]
+    branches: [idric-ir-first-slice, dex-backend]
   pull_request:
 
 concurrency:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  arm-thumb:
+  backend:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out backend
@@ -26,7 +26,7 @@ jobs:
       - name: Install host build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential curl ca-certificates clang lld file libgmp-dev qemu-user
+          sudo apt-get install -y build-essential curl ca-certificates clang default-jre-headless file libgmp-dev lld python3 qemu-user
 
       - name: Bootstrap pinned Idriç
         run: ./Idric/edric bootstrap
@@ -38,32 +38,6 @@ jobs:
 
       - name: Compile, inspect, assemble, and execute Thumb verification
         run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
-
-  dex:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check out backend
-        uses: actions/checkout@v4
-
-      - name: Check out pinned Idriç compiler
-        uses: actions/checkout@v4
-        with:
-          repository: isomorphisms/Idric
-          ref: 081b9cde0591154839fb5d80d76e5570e0436300
-          path: Idric
-
-      - name: Install host build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential curl ca-certificates default-jre-headless libgmp-dev python3
-
-      - name: Bootstrap pinned Idriç
-        run: ./Idric/edric bootstrap
-
-      - name: Install pinned Idriç libraries and compiler API
-        run: |
-          make -C Idric install-bootstrap-libs IDRIS2="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
-          make -C Idric install-api IDRIS2_BOOT="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
 
       - name: Compile and independently validate direct DEX
         run: make dex-test IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
@@ -80,7 +54,7 @@ jobs:
             build/exec/dex-validation-receipt.txt
 
   dex-art:
-    needs: dex
+    needs: backend
     runs-on: ubuntu-24.04
     steps:
       - name: Check out backend
