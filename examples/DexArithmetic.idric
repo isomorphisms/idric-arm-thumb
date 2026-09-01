@@ -1,0 +1,71 @@
+module DexArithmetic
+
+||| Required no-argument source fixture. The compiler may constant-fold this;
+||| the parameterized arithmetic exports below retain each checked operation
+||| so the DEX plan and runtime tests can inspect it directly.
+%export "dex:add_constants"
+add_constants : Int32
+add_constants =
+  let a : Int32 = 12
+      b : Int32 = 7
+      c : Int32 = a + b
+  in c
+
+%export "dex:add"
+add : Int32 -> Int32 -> Int32
+add a b = a + b
+
+%export "dex:subtract"
+subtract : Int32 -> Int32 -> Int32
+subtract a b = a - b
+
+%export "dex:multiply"
+multiply : Int32 -> Int32 -> Int32
+multiply a b = a * b
+
+%export "dex:copy"
+copy : Int32 -> Int32
+copy value = value
+
+%export "dex:choose_less"
+choose_less : Int32 -> Int32 -> Int32
+choose_less left right = if left < right then 41 else 99
+
+%export "dex:negative"
+negative : Int32
+negative = -32769
+
+%export "dex:constant_4_min"
+constant_4_min : Int32
+constant_4_min = -8
+
+%export "dex:constant_4_max"
+constant_4_max : Int32
+constant_4_max = 7
+
+%export "dex:constant_16_min"
+constant_16_min : Int32
+constant_16_min = -32768
+
+%export "dex:constant_16_max"
+constant_16_max : Int32
+constant_16_max = 32767
+
+%export "dex:constant_32_min"
+constant_32_min : Int32
+constant_32_min = -32769
+
+%export "dex:constant_32_max"
+constant_32_max : Int32
+constant_32_max = 32768
+
+%export "dex:constant_min"
+constant_min : Int32
+constant_min = -2147483648
+
+%export "dex:constant_max"
+constant_max : Int32
+constant_max = 2147483647
+
+main : IO ()
+main = pure ()

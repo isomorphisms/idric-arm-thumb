@@ -1,113 +1,109 @@
 # Idriç → DEX backend
 
-This backend lives beside `Backend.ARMThumb`, but it is deliberately a different
-kind of target.
+DEX is an Android Runtime target, not a processor ABI. This backend emits one
+small DEX 035 application-code class directly and leaves ARMv7, AArch64, x86,
+or x86-64 machine-code generation to ART.
 
-- `ARMThumb` emits processor instructions directly.
-- `DEX` emits Android Runtime bytecode. ART is responsible for the eventual
-  ARMv7, ARM64, x86, or x86-64 machine code.
-
-The immediate goal is therefore **one Android application-code target without
-per-ABI native libraries**. APK/AAB packaging, resources, manifest handling, and
-signing remain separate layers around `classes.dex`.
-
-Before adding more lowering, see [`OPCODES.md`](./OPCODES.md): it inventories all
-256 opcode slots, the three payload pseudo-instructions, the instruction formats
-used by each opcode, and an Edriç-specific disposition for every instruction.
-The initial binary target is conservatively DEX 035; newer dynamic-call opcodes
-stay out until a concrete requirement justifies them.
-
-Also see [`PSEUDO_REGISTER_IR.md`](./PSEUDO_REGISTER_IR.md) for a deliberately
-temporary experiment: a typed pseudo-register representation that may preserve
-mathematical operations such as Einstein-index contraction and tensor product
-before DEX, ARM Thumb, SIMD, or GPU lowering chooses an execution strategy. It
-is explicitly allowed to disappear if it duplicates existing checked ANF/IR.
-
-## First slice
-
-Keep the bootstrap small and inspectable:
+The executable path is now:
 
 ```text
-checked Idriç / ANF
-        ↓
-DEX lowering
-        ↓
-smali text
-        ↓
-smali assembler (oracle/bootstrap only)
-        ↓
-classes.dex
+.idric source
+  -> pinned Idriç parser, elaborator, and type checker
+  -> Compiler.ANF
+  -> Backend.DEX.IR method plan
+  -> Backend.DEX.Encode
+  -> classes.dex
 ```
 
-After the lowering is stable, replace the smali assembler with a direct binary
-DEX encoder while keeping the smali rendering as a readable oracle.
+`Backend.DEX.Smali` renders the same plan for review. The smali assembler is an
+oracle and builds the external test runner only; it is not in the candidate
+compiler path.
 
-First semantic fixture:
+## Checked compiler handoff
 
-```text
-a ← 12
-b ← 7
-c ← a + b
-return c
+The custom code generator uses `getCompileDataWith ["dex"] False ANF` from
+Idriç revision `081b9cde0591154839fb5d80d76e5570e0436300`. It accepts only
+functions selected by `%export "dex:<method_name>"` after elaboration.
+
+The first source ABI is deliberately explicit:
+
+- zero or more ordinary `Int32` parameters;
+- an `Int32` result;
+- no erased or implicit method parameters.
+
+The lowerer consumes `Compiler.ANF`, not source text. It currently recognizes
+checked Int32 constants, locals/lets, `Add Int32Type`, `Sub Int32Type`, and
+`Mul Int32Type`. The pinned compiler retains overloaded Int32 `<` as the
+resolved checked name `Prelude.EqOrd.<`; the bridge lowers that exact checked
+call and its Boolean 0/1 case form. Other named calls are rejected.
+
+Compilation retains four adjacent evidence files for `-o classes`:
+
+- `classes.checked.anf` — selected checked one-step definitions;
+- `classes.dex.plan` — typed target plan;
+- `classes.smali` — readable oracle rendering;
+- `classes.dex` — direct production artifact.
+
+The literal-only `add_constants` fixture is legitimately folded to `19` by the
+current compiler. The parameterized checked `add` definition retains
+`%op +Int32`; the ART harness calls it with 12 and 7 and checks 19.
+
+## Implemented DEX subset
+
+The typed target plan has integer constants, moves, add/subtract/multiply,
+six two-register integer conditions, conditional branches, labels, `goto`, and
+integer return. The direct encoder implements these concrete formats:
+
+| Operation | DEX opcode / format |
+| --- | --- |
+| constant | `const/4` 11n, `const/16` 21s, `const` 31i |
+| move | `move` 12x, `move/from16` 22x, `move/16` 32x |
+| arithmetic | `add-int`, `sub-int`, `mul-int` 23x |
+| comparison branch | `if-eq` through `if-le` 22t |
+| jump | `goto` 10t |
+| result | `return` 11x |
+
+Format selection checks register and signed-literal ranges. Branch labels are
+resolved in code units; zero and out-of-range 10t/22t offsets are rejected.
+Parameters occupy the last virtual registers as required by DEX. There is no
+physical CPU register allocator.
+
+The file writer owns DEX magic/version, header, sorted string/type/prototype and
+method identifiers, one class definition, type lists, code items, string data,
+class data, map list, alignment, SHA-1 signature, and Adler-32 checksum. Output
+is deterministic for a deterministic plan.
+
+## Verification
+
+Run:
+
+```sh
+make dex-test IDRIC=/path/to/Idric/build/exec/idris2
 ```
 
-Expected DEX-shaped lowering:
+This checks the compiler revision, typechecks the backend, compiles the real
+Idriç fixture, retains checked ANF and the plan, tests encoder boundaries and
+malformed plans, rejects a 64-bit `Int` export, regenerates deterministically,
+checks the DEX header and hashes independently, disassembles with pinned
+baksmali, and compares that disassembly with the smali-oracle artifact.
 
-```smali
-const/16 v0, 12
-const/16 v1, 7
-add-int  v2, v0, v1
-return   v2
-```
+`make dex-device` additionally uses a connected Android device or emulator. It
+loads the directly encoded candidate beside a separately assembled test runner
+and invokes it with Android's `app_process`. Absence of a device is reported as
+`NOT_VERIFIED` with exit status 2. CI provides a bounded API-29 x86-64 emulator
+job; it does not require a permanently attached phone.
 
-The first executable acceptance test should load the generated class/method in
-an Android/Dalvik-compatible runtime and verify the returned integer. Do not
-claim Android application acceptance merely because smali assembles.
+See [`AUDIT.md`](./AUDIT.md) for the starting boundary and
+[`OPCODES.md`](./OPCODES.md) for the complete opcode inventory.
 
-## Initial instruction surface
+## Explicitly unsupported
 
-Start with the small register-machine core:
+The first slice does not claim general calls, recursion, constructors, objects,
+arrays, fields, strings, exceptions, monitors, annotations, debug data, wide
+64-bit values, floats, Float16, Android framework calls, lifecycle classes,
+resources, APK packaging, signing, or source-level IO. Unsupported ANF and DEX
+plans fail; there is no RefC, Java, Chez, ARM Thumb, smali, or d8 fallback.
 
-- `const`
-- `move`
-- `add-int`, `sub-int`, `mul-int`
-- integer comparison + `if-*`
-- `goto`
-- `return`
-
-Then add calls, objects, fields, and arrays only when an Android application
-fixture requires them.
-
-## Numeric boundary
-
-DEX arithmetic directly provides 32-bit integer/float operations and 64-bit
-wide operations. It has no Float16 arithmetic opcode. Preserve Idriç's explicit
-numeric-resolution boundary rather than silently treating `Float16` as
-`Float32`.
-
-A later Float16 design must choose explicitly among:
-
-1. a 16-bit stored representation with Float32 arithmetic plus checked rounding,
-2. software half arithmetic, or
-3. a native/GPU backend for operations that genuinely require half arithmetic.
-
-## Android boundary
-
-Generating DEX does **not** mean generating Java source. The backend may emit
-DEX classes and methods directly, including calls into Android framework
-classes. The surrounding Android package still needs at least a manifest,
-resources as applicable, APK/AAB construction, and signing.
-
-## Repository placement
-
-Keep this backend here beside the direct CPU backend:
-
-```text
-src/Backend/
-  ARMThumb/
-  DEX/
-```
-
-Conceptually, however, label DEX a **runtime/VM backend**, not a processor ABI.
-That distinction matters whenever we discuss native ABI rules, Float16, raw
-memory layout, or instruction-level behavior.
+APK/UI machinery is intentionally outside the semantic backend. A framework
+call or other Android-facing extension should be added only with a concrete
+checked Idriç fixture that requires it.

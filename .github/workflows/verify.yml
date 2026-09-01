@@ -2,15 +2,15 @@ name: verify
 
 on:
   push:
-    branches: [idric-ir-first-slice]
+    branches: [idric-ir-first-slice, dex-backend]
   pull_request:
 
 concurrency:
-  group: arm-thumb-${{ github.ref }}
+  group: backend-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  arm-thumb:
+  backend:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out backend
@@ -26,10 +26,15 @@ jobs:
       - name: Install host build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential curl ca-certificates clang lld file libgmp-dev qemu-user
+          sudo apt-get install -y build-essential curl ca-certificates chezscheme clang file libgmp-dev lld qemu-user
+          java -version
+          python3 --version
 
       - name: Bootstrap pinned Idriç
         run: ./Idric/edric bootstrap
+
+      - name: Install pinned Chez codegen data
+        run: make -C Idric/support/chez install IDRIS2_VERSION=0.8.0
 
       - name: Install pinned Idriç libraries and compiler API
         run: |
@@ -38,3 +43,55 @@ jobs:
 
       - name: Compile, inspect, assemble, and execute Thumb verification
         run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Compile and independently validate direct DEX
+        run: make dex-test IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Retain DEX evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-dex-evidence
+          path: |
+            build/exec/classes.dex
+            build/exec/classes.checked.anf
+            build/exec/classes.dex.plan
+            build/exec/classes.smali
+            build/exec/dex-validation-receipt.txt
+
+  dex-art:
+    needs: backend
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out backend
+        uses: actions/checkout@v4
+
+      - name: Download direct DEX candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: direct-dex-evidence
+          path: build/exec
+
+      - name: Fetch pinned runtime-harness assembler
+        run: |
+          mkdir -p build/oracles
+          curl -fL --retry 3 \
+            https://github.com/baksmali/smali/releases/download/3.0.10/smali-3.0.10-fat-release.jar \
+            -o build/oracles/smali-3.0.10.jar
+          echo '32fa0e88a6c397b3922201adf5f3e534fbaed5a663c71d0c558c3ddce0af844a  build/oracles/smali-3.0.10.jar' | sha256sum -c -
+
+      - name: Execute candidate on Android Runtime
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: true
+          script: DEX_DEVICE_RECEIPT=build/exec/dex-device-receipt.txt SMALI_JAR="$GITHUB_WORKSPACE/build/oracles/smali-3.0.10.jar" tests/dex/device-acceptance.sh build/exec/classes.dex
+
+      - name: Retain ART receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dex-art-receipt
+          path: build/exec/dex-device-receipt.txt
+          if-no-files-found: warn

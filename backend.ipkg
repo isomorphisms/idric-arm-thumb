@@ -11,7 +11,14 @@ modules =
   Backend.ARMThumb.Emit,
   Backend.ARMThumb.Codegen,
   Backend.ARMThumb.Main,
+  Backend.DEX.IR,
+  Backend.DEX.Lower,
+  Backend.DEX.Hash,
+  Backend.DEX.Encode,
+  Backend.DEX.Smali,
+  Backend.DEX.Codegen,
+  Backend.DEX.Main,
   RendererPrimitives
 
-main = Backend.ARMThumb.Main
+main = Backend.DEX.Main
 executable = idric-arm-thumb
