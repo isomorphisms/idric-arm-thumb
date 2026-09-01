@@ -9,6 +9,9 @@ concurrency:
   group: backend-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  IDRIC_COMPILER_REF: Idriç
+
 jobs:
   backend:
     runs-on: ubuntu-24.04
@@ -16,11 +19,11 @@ jobs:
       - name: Check out backend
         uses: actions/checkout@v4
 
-      - name: Check out pinned Idriç compiler
+      - name: Check out current declared Idriç compiler
         uses: actions/checkout@v4
         with:
           repository: isomorphisms/Idric
-          ref: 081b9cde0591154839fb5d80d76e5570e0436300
+          ref: ${{ env.IDRIC_COMPILER_REF }}
           path: Idric
 
       - name: Install host build tools
@@ -30,24 +33,13 @@ jobs:
           java -version
           python3 --version
 
-      - name: Bootstrap pinned Idriç
-        run: ./Idric/edric bootstrap
-
-      - name: Install pinned Chez codegen data
-        run: make -C Idric/support/chez install IDRIS2_VERSION=0.8.0
-
-      - name: Install pinned Idriç libraries and compiler API
-        run: |
-          make -C Idric install-bootstrap-libs IDRIS2="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
-          make -C Idric install-api IDRIS2_BOOT="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
-
-      - name: Compile, inspect, assemble, and execute Thumb verification
-        run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
-
-      - name: Compile and independently validate direct DEX
-        run: make dex-test IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+      - name: Run current-head compiler, Thumb, and DEX acceptance
+        env:
+          IDRIC_REPO: ${{ github.workspace }}/Idric
+        run: tests/dex/run-current-head-ci.sh
 
       - name: Retain DEX evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: direct-dex-evidence
@@ -57,6 +49,8 @@ jobs:
             build/exec/classes.dex.plan
             build/exec/classes.smali
             build/exec/dex-validation-receipt.txt
+            build/exec/current-head-receipt.tsv
+          if-no-files-found: warn
 
   dex-art:
     needs: backend

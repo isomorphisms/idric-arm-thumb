@@ -171,7 +171,7 @@ mutual
     Right (emit (IntegerConstant destination (cast value)) state)
   lower_to destination (APrimVal _ (I value)) state =
     Left
-      ("Idriç Int is 64-bit in the pinned compiler; the first DEX slice " ++
+      ("Idriç Int is 64-bit in the current compiler; the first DEX slice " ++
        "accepts Int32 (got literal " ++ show value ++ ")")
   lower_to destination (AOp _ _ operation arguments) state =
     lower_primitive destination operation arguments state

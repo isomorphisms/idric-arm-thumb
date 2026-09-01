@@ -1,5 +1,6 @@
 IDRIC ?= idris2
-IDRIC_REVISION ?= 081b9cde0
+IDRIC_REPO ?= $(CURDIR)/Idric
+IDRIC_COMPILER_REF ?= Idriç
 ARM_CLANG ?= clang
 ARM_TARGET ?= armv7a-linux-androideabi21
 ARM_EXEC_TARGET ?= armv7a-linux-gnueabihf
@@ -51,11 +52,8 @@ DEX_VALIDATION_RECEIPT := build/exec/dex-validation-receipt.txt
 	dex-malformed-test dex-test dex-device test verify clean
 
 check-compiler:
-	@$(IDRIC) --version | grep -q '$(IDRIC_REVISION)' || { \
-		echo "Expected Idriç compiler revision $(IDRIC_REVISION)"; \
-		$(IDRIC) --version; \
-		exit 1; \
-	}
+	@$(IDRIC) --version
+	@git -C "$(IDRIC_REPO)" rev-parse --verify HEAD >/dev/null
 
 check: check-compiler
 	$(IDRIC) --typecheck backend.ipkg
@@ -323,11 +321,16 @@ dex-test: check dex-fixture dex-encoder-selftest dex-determinism dex-reject \
 		echo 'DEX parser validation PASS'; \
 		echo 'oracle comparison     PASS'; \
 		echo 'deterministic output  PASS'; \
-		echo 'ART loaded             NOT_VERIFIED'; \
-		echo 'ART executed           NOT_VERIFIED'; \
-		echo 'result checked         NOT_VERIFIED'; \
+		echo 'ART loaded             SKIP prerequisite=device_or_emulator'; \
+		echo 'ART executed           SKIP prerequisite=ART_loaded'; \
+		echo 'result checked         SKIP prerequisite=ART_executed'; \
+		echo 'compiler requested ref $(IDRIC_COMPILER_REF)'; \
+		printf 'compiler resolved SHA  '; git -C "$(IDRIC_REPO)" rev-parse HEAD; \
+		printf 'compiler dirty state   '; if git -C "$(IDRIC_REPO)" status --porcelain | grep -q .; then echo dirty; else echo clean; fi; \
 		printf 'compiler revision      '; $(IDRIC) --version | head -n 1; \
+		printf 'backend requested ref  %s\n' "$${GITHUB_HEAD_REF:-$${GITHUB_REF_NAME:-local}}"; \
 		printf 'backend revision       '; git rev-parse HEAD; \
+		printf 'backend dirty state    '; if git status --porcelain | grep -q .; then echo dirty; else echo clean; fi; \
 		printf 'classes.dex SHA-256    '; sha256sum $(DEX_FILE) | cut -d' ' -f1; \
 		echo 'checked form           $(DEX_CHECKED_ANF)'; \
 		echo 'DEX plan               $(DEX_PLAN)'; \
