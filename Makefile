@@ -17,6 +17,9 @@ SELFTEST := build/exec/backend-selftest
 INVALID_INT_LOG := build/exec/invalid-int.log
 TOO_MANY_ARGS_LOG := build/exec/too-many-args.log
 INVALID_RESULT_LOG := build/exec/invalid-result.log
+INVALID_INT_ARTIFACT := build/exec/invalid_int.arm-thumb.S
+TOO_MANY_ARGS_ARTIFACT := build/exec/too_many_args.arm-thumb.S
+INVALID_RESULT_ARTIFACT := build/exec/invalid_result.arm-thumb.S
 DETERMINISM_A := build/exec/determinism-a.arm-thumb.S
 DETERMINISM_B := build/exec/determinism-b.arm-thumb.S
 DEX_SOURCE := examples/DexArithmetic.idric
@@ -105,39 +108,42 @@ inspect: examples
 
 reject-invalid-int: $(DRIVER) tests/source/InvalidInt.idric
 	@set -e; \
-	if IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
-		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
-		tests/source/InvalidInt.idric -o invalid_int > $(INVALID_INT_LOG) 2>&1; then \
-		cat $(INVALID_INT_LOG); \
-		echo 'Expected 64-bit Int source ABI to be rejected'; \
+	test ! -e $(INVALID_INT_ARTIFACT) || { \
+		echo 'Remove stale $(INVALID_INT_ARTIFACT) before rejection test'; \
 		exit 1; \
-	fi
+	}; \
+	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
+		tests/source/InvalidInt.idric -o invalid_int > $(INVALID_INT_LOG) 2>&1 || true
 	grep -q 'arm-thumb rejected source ABI' $(INVALID_INT_LOG)
 	grep -q 'unsupported source primitive type' $(INVALID_INT_LOG)
+	test ! -e $(INVALID_INT_ARTIFACT)
 
 reject-too-many-args: $(DRIVER) tests/source/TooManyArgs.idric
 	@set -e; \
-	if IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
-		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
-		tests/source/TooManyArgs.idric -o too_many_args > $(TOO_MANY_ARGS_LOG) 2>&1; then \
-		cat $(TOO_MANY_ARGS_LOG); \
-		echo 'Expected five-word source ABI to be rejected'; \
+	test ! -e $(TOO_MANY_ARGS_ARTIFACT) || { \
+		echo 'Remove stale $(TOO_MANY_ARGS_ARTIFACT) before rejection test'; \
 		exit 1; \
-	fi
+	}; \
+	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
+		tests/source/TooManyArgs.idric -o too_many_args > $(TOO_MANY_ARGS_LOG) 2>&1 || true
 	grep -q 'arm-thumb rejected source ABI' $(TOO_MANY_ARGS_LOG)
 	grep -q 'more than four one-word arguments' $(TOO_MANY_ARGS_LOG)
+	test ! -e $(TOO_MANY_ARGS_ARTIFACT)
 
 reject-invalid-result: $(DRIVER) tests/source/InvalidResult.idric
 	@set -e; \
-	if IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
-		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
-		tests/source/InvalidResult.idric -o invalid_result > $(INVALID_RESULT_LOG) 2>&1; then \
-		cat $(INVALID_RESULT_LOG); \
-		echo 'Expected non-Float32 result ABI to be rejected'; \
+	test ! -e $(INVALID_RESULT_ARTIFACT) || { \
+		echo 'Remove stale $(INVALID_RESULT_ARTIFACT) before rejection test'; \
 		exit 1; \
-	fi
+	}; \
+	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
+		tests/source/InvalidResult.idric -o invalid_result > $(INVALID_RESULT_LOG) 2>&1 || true
 	grep -q 'arm-thumb rejected source ABI' $(INVALID_RESULT_LOG)
 	grep -q 'result must be RendererPrimitives.Float32' $(INVALID_RESULT_LOG)
+	test ! -e $(INVALID_RESULT_ARTIFACT)
 
 reject: reject-invalid-int reject-too-many-args reject-invalid-result
 
