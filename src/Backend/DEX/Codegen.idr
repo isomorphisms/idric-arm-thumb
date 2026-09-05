@@ -84,7 +84,10 @@ resolve_export_abi (internal_name, method_name) = do
         Right accepted => pure (MkExportABI internal_name accepted parameter_count)
 
 private
-lookup_anf_definition : Name -> List (Name, ANFDef) -> Maybe ANFDef
+lookup_anf_definition :
+  Name ->
+  List (Name, Administrative_Normal_Form_Definition) ->
+  Maybe Administrative_Normal_Form_Definition
 lookup_anf_definition requested [] = Nothing
 lookup_anf_definition requested ((name, definition) :: rest) =
   if requested == name then Just definition else lookup_anf_definition requested rest
@@ -108,7 +111,9 @@ validate_exports exports =
 
 private
 lower_exports :
-  Name -> List ExportABI -> List (Name, ANFDef) ->
+  Name ->
+  List ExportABI ->
+  List (Name, Administrative_Normal_Form_Definition) ->
   Either String (List MethodPlan)
 lower_exports integer_less_name [] definitions = Right []
 lower_exports integer_less_name (selected :: rest) definitions = do
@@ -133,7 +138,8 @@ lower_exports integer_less_name (selected :: rest) definitions = do
   Right (method :: more)
 
 private
-render_checked_exports : List ExportABI -> List (Name, ANFDef) -> String
+render_checked_exports :
+  List ExportABI -> List (Name, Administrative_Normal_Form_Definition) -> String
 render_checked_exports [] definitions = ""
 render_checked_exports (selected :: rest) definitions =
   let rendered =
@@ -157,7 +163,8 @@ compile_dex :
   ClosedTerm -> (requested_output_name : String) -> Core (Maybe String)
 compile_dex definitions syntax temporary_directory output_directory
             term requested_output_name = do
-  resolved_compile_data <- getCompileDataWith [backend_name] False ANF term
+  resolved_compile_data <-
+    getCompileDataWith [backend_name] False Administrative_Normal_Form term
   qualified_exports <- traverse fully_qualified_export (exported resolved_compile_data)
   export_abis <- traverse resolve_export_abi qualified_exports
   integer_less_name <-
