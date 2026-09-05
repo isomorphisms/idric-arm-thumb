@@ -52,6 +52,11 @@ jobs:
             build/exec/classes.smali
             build/exec/dex-validation-receipt.txt
             build/exec/current-head-receipt.tsv
+            build/exec/wegert/classes.dex
+            build/exec/wegert/classes-first.dex
+            build/exec/wegert/host-receipt.txt
+            build/exec/wegert/baksmali-candidate/org/isomorphisms/wegert/WegertActivity.smali
+            build/exec/wegert/baksmali-oracle/org/isomorphisms/wegert/WegertActivity.smali
           if-no-files-found: warn
 
   dex-art:
@@ -92,4 +97,57 @@ jobs:
         with:
           name: dex-art-receipt
           path: build/exec/dex-device-receipt.txt
+          if-no-files-found: warn
+
+  wegert-art:
+    needs: backend
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out backend
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download direct DEX evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: direct-dex-evidence
+          path: build/exec
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packaging and NDK inputs
+        run: |
+          yes | sdkmanager "platforms;android-29" "build-tools;35.0.0" "ndk;26.3.11579264"
+
+      - name: Build JNI probe and package direct DEX APK
+        run: |
+          ANDROID_NDK_HOME="$ANDROID_HOME/ndk/26.3.11579264" \
+            tests/dex/wegert/build-jni.sh build/exec/wegert/libwegert.so
+          ANDROID_BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0" \
+            tests/dex/wegert/build-apk.sh \
+            build/exec/wegert/classes.dex \
+            build/exec/wegert/libwegert.so \
+            build/exec/wegert/wegert-test.apk
+
+      - name: Execute Wegert lifecycle/JNI slice on ART
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: true
+          script: WEGERT_ART_RECEIPT=build/exec/wegert/art-receipt.txt tests/dex/wegert/art-acceptance.sh build/exec/wegert/wegert-test.apk
+
+      - name: Retain Wegert ART evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wegert-art-receipt
+          path: |
+            build/exec/wegert/art-receipt.txt
+            build/exec/wegert/wegert-test.apk
+            build/exec/wegert/libwegert.so
           if-no-files-found: warn

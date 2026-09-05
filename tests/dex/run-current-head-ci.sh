@@ -36,7 +36,7 @@ write_receipt() {
     printf 'dependent_requested_ref\t%s\n' "$compiler_ref"
     printf 'dependent_resolved_sha\t%s\n' "$compiler_sha"
     printf 'dependent_dirty_state\t%s\n' "$compiler_dirty"
-    for stage in compiler_checkout compiler_build compiler_api_install backend_build dex_generation dex_validation thumb_execution art_execution; do
+    for stage in compiler_checkout compiler_build compiler_api_install backend_build wegert_direct_dex dex_generation dex_validation thumb_execution art_execution; do
       case " $passed " in
         *" $stage "*) printf 'stage\t%s\tPASS\n' "$stage" ;;
         *)
@@ -87,6 +87,10 @@ passed="$passed compiler_api_install"
 current_stage=backend_build
 run_stage make -C "$repo_root" check IDRIC="$compiler" IDRIC_REPO="$idric_repo" IDRIC_COMPILER_REF="$compiler_ref"
 passed="$passed backend_build"
+
+current_stage=wegert_direct_dex
+run_stage env IDRIC="$compiler" "$repo_root/tests/dex/wegert-host-acceptance.sh"
+passed="$passed wegert_direct_dex"
 
 current_stage=dex_generation
 run_stage make -C "$repo_root" dex-fixture IDRIC="$compiler" IDRIC_REPO="$idric_repo" IDRIC_COMPILER_REF="$compiler_ref"

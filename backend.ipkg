@@ -15,6 +15,7 @@ modules =
   Backend.DEX.Lower,
   Backend.DEX.Hash,
   Backend.DEX.Encode,
+  Backend.DEX.EncodeNativeActivity,
   Backend.DEX.Smali,
   Backend.DEX.Codegen,
   Backend.DEX.Main,
