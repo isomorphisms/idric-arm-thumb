@@ -3,8 +3,9 @@ set -Eeuo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 idric_repo=${IDRIC_REPO:-"$repo_root/Idric"}
+idric_support_root="$idric_repo/_"
 compiler_ref=${IDRIC_COMPILER_REF:-Idriç}
-compiler="$idric_repo/build/exec/idris2"
+compiler="$idric_support_root/build/exec/idris2"
 receipt="$repo_root/build/exec/current-head-receipt.tsv"
 log="$repo_root/build/exec/current-head.log"
 current_stage=compiler_build
@@ -72,15 +73,15 @@ run_stage() {
 
 current_stage=compiler_build
 if [[ ! -x "$compiler" ]]; then
-  run_stage "$idric_repo/edric" bootstrap
+  run_stage "$idric_support_root/edric" bootstrap
 fi
 run_stage "$compiler" --version
 passed="$passed compiler_build"
 
 current_stage=compiler_api_install
-run_stage make -C "$idric_repo/support/chez" install IDRIS2_VERSION=0.8.0
-run_stage make -C "$idric_repo" install-bootstrap-libs IDRIS2="$compiler"
-run_stage make -C "$idric_repo" install-api IDRIS2_BOOT="$compiler"
+run_stage make -C "$idric_support_root/support/chez" install IDRIS2_VERSION=0.8.0
+run_stage make -C "$idric_support_root" install-bootstrap-libs IDRIS2="$compiler"
+run_stage make -C "$idric_support_root" install-api IDRIS2_BOOT="$compiler"
 passed="$passed compiler_api_install"
 
 current_stage=backend_build
