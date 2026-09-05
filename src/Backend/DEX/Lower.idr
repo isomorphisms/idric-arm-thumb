@@ -54,36 +54,43 @@ append_uniques values (value :: rest) =
 
 mutual
   private
-  collect_variables : ANF -> List Int
-  collect_variables (ALet _ destination value body) =
-    append_uniques
-      (append_unique (collect_variables value) destination)
-      (collect_variables body)
-  collect_variables (AConCase _ _ alternatives fallback) =
-    append_uniques
-      (collect_constructor_alternatives alternatives)
-      (maybe [] collect_variables fallback)
-  collect_variables (AConstCase _ _ alternatives fallback) =
-    append_uniques
-      (collect_constant_alternatives alternatives)
-      (maybe [] collect_variables fallback)
+  collect_variables : Administrative_Normal_Form -> List Int
+  collect_variables
+    (Administrative_Normal_Form_Binding _ destination value body) =
+      append_uniques
+        (append_unique (collect_variables value) destination)
+        (collect_variables body)
+  collect_variables
+    (Administrative_Normal_Form_Constructor_Case _ _ alternatives fallback) =
+      append_uniques
+        (collect_constructor_alternatives alternatives)
+        (maybe [] collect_variables fallback)
+  collect_variables
+    (Administrative_Normal_Form_Constant_Case _ _ alternatives fallback) =
+      append_uniques
+        (collect_constant_alternatives alternatives)
+        (maybe [] collect_variables fallback)
   collect_variables expression = []
 
   private
-  collect_constructor_alternatives : List AConAlt -> List Int
+  collect_constructor_alternatives :
+    List Administrative_Normal_Form_Constructor_Alternative -> List Int
   collect_constructor_alternatives [] = []
   collect_constructor_alternatives
-    (MkAConAlt _ _ _ arguments body :: rest) =
+    (Make_Administrative_Normal_Form_Constructor_Alternative
+      _ _ _ arguments body :: rest) =
       append_uniques arguments
         (append_uniques (collect_variables body)
           (collect_constructor_alternatives rest))
 
   private
-  collect_constant_alternatives : List AConstAlt -> List Int
+  collect_constant_alternatives :
+    List Administrative_Normal_Form_Constant_Alternative -> List Int
   collect_constant_alternatives [] = []
-  collect_constant_alternatives (MkAConstAlt _ body :: rest) =
-    append_uniques (collect_variables body)
-      (collect_constant_alternatives rest)
+  collect_constant_alternatives
+    (Make_Administrative_Normal_Form_Constant_Alternative _ body :: rest) =
+      append_uniques (collect_variables body)
+        (collect_constant_alternatives rest)
 
 private
 number_registers_from : Int -> List Int -> List (Int, Register)
@@ -136,11 +143,14 @@ lower_comparison condition destination left right state =
 
 private
 lower_primitive :
-  Register -> PrimFn arity -> Vect arity AVar -> LowerState ->
+  Register -> PrimFn arity ->
+  Vect arity Administrative_Normal_Form_Variable -> LowerState ->
   Either String LowerState
 lower_primitive destination operation arguments state =
   case (operation, arguments) of
-    (binary, [ALocal left_variable, ALocal right_variable]) => do
+    (binary,
+      [Administrative_Normal_Form_Local_Variable left_variable,
+       Administrative_Normal_Form_Local_Variable right_variable]) => do
       left <- lookup_register "Int32 primitive left operand" left_variable state
       right <- lookup_register "Int32 primitive right operand" right_variable state
       case integer_binary binary of
@@ -161,44 +171,61 @@ lower_primitive destination operation arguments state =
 
 mutual
   private
-  lower_to : Register -> ANF -> LowerState -> Either String LowerState
-  lower_to destination (AV _ (ALocal source_variable)) state = do
+  lower_to :
+    Register -> Administrative_Normal_Form -> LowerState -> Either String LowerState
+  lower_to destination
+    (Administrative_Normal_Form_Variable_Expression _
+      (Administrative_Normal_Form_Local_Variable source_variable)) state = do
     source <- lookup_register "Copy" source_variable state
     if destination == source
       then Right state
       else Right (emit (Move destination source) state)
-  lower_to destination (APrimVal _ (I32 value)) state =
-    Right (emit (IntegerConstant destination (cast value)) state)
-  lower_to destination (APrimVal _ (I value)) state =
-    Left
-      ("Idriç Int is 64-bit in the current compiler; the first DEX slice " ++
-       "accepts Int32 (got literal " ++ show value ++ ")")
-  lower_to destination (AOp _ _ operation arguments) state =
-    lower_primitive destination operation arguments state
-  lower_to destination (AAppName _ _ name [ALocal left_variable, ALocal right_variable]) state =
-    if is_checked_int32_less name state.integer_less_name
-      then do
-        left <- lookup_register "Int32 < left operand" left_variable state
-        right <- lookup_register "Int32 < right operand" right_variable state
-        Right (lower_comparison LessThanInteger destination left right state)
-      else
-        Left
-          ("Unsupported checked named call in DEX Int32 subset: " ++ show name)
-  lower_to destination (ALet _ nested_destination value body) state = do
-    target <- lookup_register "Let destination" nested_destination state
-    after_value <- lower_to target value state
-    lower_to destination body after_value
-  lower_to destination (AConCase _ (ALocal scrutinee) alternatives fallback) state =
-    lower_boolean_case destination scrutinee alternatives fallback state
-  lower_to destination (AConstCase _ (ALocal scrutinee) alternatives fallback) state =
-    lower_boolean_constant_case destination scrutinee alternatives fallback state
+  lower_to destination
+    (Administrative_Normal_Form_Primitive_Value _ (I32 value)) state =
+      Right (emit (IntegerConstant destination (cast value)) state)
+  lower_to destination
+    (Administrative_Normal_Form_Primitive_Value _ (I value)) state =
+      Left
+        ("Idriç Int is 64-bit in the current compiler; the first DEX slice " ++
+         "accepts Int32 (got literal " ++ show value ++ ")")
+  lower_to destination
+    (Administrative_Normal_Form_Primitive_Operation _ _ operation arguments) state =
+      lower_primitive destination operation arguments state
+  lower_to destination
+    (Administrative_Normal_Form_Named_Function_Application _ _ name
+      [Administrative_Normal_Form_Local_Variable left_variable,
+       Administrative_Normal_Form_Local_Variable right_variable]) state =
+      if is_checked_int32_less name state.integer_less_name
+        then do
+          left <- lookup_register "Int32 < left operand" left_variable state
+          right <- lookup_register "Int32 < right operand" right_variable state
+          Right (lower_comparison LessThanInteger destination left right state)
+        else
+          Left
+            ("Unsupported checked named call in DEX Int32 subset: " ++ show name)
+  lower_to destination
+    (Administrative_Normal_Form_Binding _ nested_destination value body) state = do
+      target <- lookup_register "Let destination" nested_destination state
+      after_value <- lower_to target value state
+      lower_to destination body after_value
+  lower_to destination
+    (Administrative_Normal_Form_Constructor_Case _
+      (Administrative_Normal_Form_Local_Variable scrutinee)
+      alternatives fallback) state =
+      lower_boolean_case destination scrutinee alternatives fallback state
+  lower_to destination
+    (Administrative_Normal_Form_Constant_Case _
+      (Administrative_Normal_Form_Local_Variable scrutinee)
+      alternatives fallback) state =
+      lower_boolean_constant_case destination scrutinee alternatives fallback state
   lower_to destination expression state =
     Left ("Unsupported checked ANF in DEX Int32 subset: " ++ show expression)
 
   private
   lower_boolean_case :
-    Register -> Int -> List AConAlt -> Maybe ANF -> LowerState ->
-    Either String LowerState
+    Register -> Int ->
+    List Administrative_Normal_Form_Constructor_Alternative ->
+    Maybe Administrative_Normal_Form -> LowerState -> Either String LowerState
   lower_boolean_case destination scrutinee_variable alternatives fallback state = do
     scrutinee <- lookup_register "Boolean case scrutinee" scrutinee_variable state
     false_body <- find_constructor_tag 0 alternatives fallback
@@ -216,8 +243,9 @@ mutual
 
   private
   lower_boolean_constant_case :
-    Register -> Int -> List AConstAlt -> Maybe ANF -> LowerState ->
-    Either String LowerState
+    Register -> Int ->
+    List Administrative_Normal_Form_Constant_Alternative ->
+    Maybe Administrative_Normal_Form -> LowerState -> Either String LowerState
   lower_boolean_constant_case destination scrutinee_variable alternatives fallback state = do
     scrutinee <- lookup_register "Boolean case scrutinee" scrutinee_variable state
     false_body <- find_constant_tag 0 alternatives fallback
@@ -249,43 +277,53 @@ mutual
 
   private
   find_constant_tag :
-    Int -> List AConstAlt -> Maybe ANF -> Either String ANF
+    Int ->
+    List Administrative_Normal_Form_Constant_Alternative ->
+    Maybe Administrative_Normal_Form -> Either String Administrative_Normal_Form
   find_constant_tag requested [] Nothing =
     Left
       ("DEX Boolean constant case has no tag " ++ show requested ++
        " and no fallback")
   find_constant_tag requested [] (Just fallback) = Right fallback
-  find_constant_tag requested (MkAConstAlt constant body :: rest) fallback =
-    case constant_tag constant of
-      Just tag =>
-        if tag == requested
-          then Right body
-          else find_constant_tag requested rest fallback
-      Nothing =>
-        Left
-          ("DEX Boolean case has a non-Boolean constant alternative: " ++
-           show constant)
+  find_constant_tag requested
+    (Make_Administrative_Normal_Form_Constant_Alternative constant body :: rest)
+    fallback =
+      case constant_tag constant of
+        Just tag =>
+          if tag == requested
+            then Right body
+            else find_constant_tag requested rest fallback
+        Nothing =>
+          Left
+            ("DEX Boolean case has a non-Boolean constant alternative: " ++
+             show constant)
 
   private
   find_constructor_tag :
-    Int -> List AConAlt -> Maybe ANF -> Either String ANF
+    Int ->
+    List Administrative_Normal_Form_Constructor_Alternative ->
+    Maybe Administrative_Normal_Form -> Either String Administrative_Normal_Form
   find_constructor_tag requested [] Nothing =
     Left
       ("DEX Boolean case has no constructor tag " ++ show requested ++
        " and no fallback")
   find_constructor_tag requested [] (Just fallback) = Right fallback
   find_constructor_tag requested
-    (MkAConAlt _ _ (Just tag) arguments body :: rest) fallback =
+    (Make_Administrative_Normal_Form_Constructor_Alternative
+      _ _ (Just tag) arguments body :: rest) fallback =
       if tag == requested
         then if null arguments
           then Right body
           else Left "DEX Boolean alternatives must be nullary"
         else find_constructor_tag requested rest fallback
-  find_constructor_tag requested (MkAConAlt name _ Nothing _ _ :: rest) fallback =
-    Left "DEX Boolean alternative has no constructor tag"
+  find_constructor_tag requested
+    (Make_Administrative_Normal_Form_Constructor_Alternative
+      name _ Nothing _ _ :: rest) fallback =
+      Left "DEX Boolean alternative has no constructor tag"
 
 private
-finish_method : ANF -> LowerState -> Either String (List Instruction)
+finish_method :
+  Administrative_Normal_Form -> LowerState -> Either String (List Instruction)
 finish_method body state = do
   lowered <- lower_to state.result_register body state
   Right (reverse (ReturnInteger lowered.result_register :: lowered.instructions_reversed))
@@ -316,8 +354,11 @@ validate_method_name name =
 ||| classification happen before this function; this pass owns only dense DEX
 ||| virtual-register placement and target instruction planning.
 public export
-lower_method : Name -> String -> String -> ANFDef -> Either String MethodPlan
-lower_method integer_less_name source_name requested_method (MkAFun arguments body) = do
+lower_method :
+  Name -> String -> String -> Administrative_Normal_Form_Definition ->
+  Either String MethodPlan
+lower_method integer_less_name source_name requested_method
+  (Make_Administrative_Normal_Form_Function arguments body) = do
   method_name <- validate_method_name requested_method
   let discovered = collect_variables body
   let local_variables = filter (\variable => not (elem variable arguments)) discovered
