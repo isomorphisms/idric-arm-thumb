@@ -108,7 +108,10 @@ resolve_export_abi (internal_name, external_symbol) = do
           else pure (MkExportABI internal_name external_symbol arguments result)
 
 private
-lookup_anf_definition : Name -> List (Name, ANFDef) -> Maybe ANFDef
+lookup_anf_definition :
+  Name ->
+  List (Name, Administrative_Normal_Form_Definition) ->
+  Maybe Administrative_Normal_Form_Definition
 lookup_anf_definition requested [] = Nothing
 lookup_anf_definition requested ((name, definition) :: rest) =
   if requested == name then Just definition else lookup_anf_definition requested rest
@@ -142,7 +145,9 @@ render_selected_export selected =
 
 private
 lower_exported_functions :
-  List ExportABI -> List (Name, ANFDef) -> Either String String
+  List ExportABI ->
+  List (Name, Administrative_Normal_Form_Definition) ->
+  Either String String
 lower_exported_functions [] definitions = Right ""
 lower_exported_functions (selected :: rest) definitions = do
   definition <-
@@ -163,7 +168,9 @@ lower_exported_functions (selected :: rest) definitions = do
 
 private
 render_backend_assembly :
-  List ExportABI -> List (Name, ANFDef) -> Either String String
+  List ExportABI ->
+  List (Name, Administrative_Normal_Form_Definition) ->
+  Either String String
 render_backend_assembly exports definitions = do
   validate_exports exports
   lowered <- lower_exported_functions exports definitions
@@ -187,7 +194,8 @@ compile_arm_thumb :
   ClosedTerm -> (requested_output_name : String) -> Core (Maybe String)
 compile_arm_thumb definitions syntax temporary_directory output_directory
                   term requested_output_name = do
-  resolved_compile_data <- getCompileDataWith [backend_name] False ANF term
+  resolved_compile_data <-
+    getCompileDataWith [backend_name] False Administrative_Normal_Form term
   qualified_exports <- traverse fully_qualified_export (exported resolved_compile_data)
   export_abis <- traverse resolve_export_abi qualified_exports
   let assembly_file = output_directory </> (requested_output_name ++ ".arm-thumb.S")
