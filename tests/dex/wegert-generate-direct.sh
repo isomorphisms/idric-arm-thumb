@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -Eeuo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -11,9 +12,13 @@ output=${1:-$candidate}
 
 mkdir -p "$build/wegert" "$(dirname -- "$output")"
 
-IDRIS2_PATH="$repo_root/build/ttc:${IDRIS2_PATH:-}" \
-  "$idric" --source-dir "$repo_root/tests/dex" \
-  "$repo_root/tests/dex/WegertDexGen.idr" -o wegert-dex-gen
+(
+  cd "$repo_root"
+  "$idric" --build wegert-dex.ipkg
+  IDRIS2_PATH="$repo_root/build/ttc:${IDRIS2_PATH:-}" \
+    "$idric" --source-dir "$repo_root/tests/dex" \
+    "$repo_root/tests/dex/WegertDexGen.idr" -o wegert-dex-gen
+)
 
 [[ -f $runtime_library ]] || {
   echo "missing Idriç runtime library: $runtime_library" >&2
