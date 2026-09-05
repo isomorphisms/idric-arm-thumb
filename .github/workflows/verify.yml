@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IDRIC_COMPILER_REF: Idriç
+  IDRIC_COMPILER_REF: compat/export-idric-one-step-api
 
 jobs:
   backend:
