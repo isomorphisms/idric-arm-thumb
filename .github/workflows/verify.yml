@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Check out backend
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Check out current declared Idriç compiler
         uses: actions/checkout@v4
@@ -58,6 +60,8 @@ jobs:
     steps:
       - name: Check out backend
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download direct DEX candidate
         uses: actions/download-artifact@v4
