@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${IDRIC:?set IDRIC to the pinned Idriç compiler}"
+: "${IDRIC:?set IDRIC to the declared Idriç compiler}"
 
 mkdir -p build/exec/branching-boundary
 
