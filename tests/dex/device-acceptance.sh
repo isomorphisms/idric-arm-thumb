@@ -54,12 +54,14 @@ write_provenance_failure() {
 [ -f "$candidate" ] || write_not_verified "candidate classes.dex is absent"
 candidate_hash=$(sha256sum "$candidate" | cut -d' ' -f1)
 
-if [ -f "$validation_receipt" ] || [ -f "$current_head_receipt" ] || [ "$provenance_required" = 1 ]; then
+if [ "$provenance_required" = 1 ]; then
   [ -f "$validation_receipt" ] || \
     write_provenance_failure "DEX validation receipt is absent"
   [ -f "$current_head_receipt" ] || \
     write_provenance_failure "current-head receipt is absent"
+fi
 
+if [ -f "$validation_receipt" ] && [ -f "$current_head_receipt" ]; then
   validated_hash=$(awk '$1 == "classes.dex" && $2 == "SHA-256" { print $3; exit }' "$validation_receipt")
   receipt_backend=$(awk -F '\t' '$1 == "resolved_sha" { print $2; exit }' "$current_head_receipt")
   compiler_revision=$(awk -F '\t' '$1 == "dependent_resolved_sha" { print $2; exit }' "$current_head_receipt")
