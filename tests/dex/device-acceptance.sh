@@ -5,7 +5,12 @@ candidate=${1:-build/exec/classes.dex}
 smali_jar=${SMALI_JAR:-}
 adb_command=${ADB:-adb}
 receipt=${DEX_DEVICE_RECEIPT:-build/exec/dex-device-receipt.txt}
+validation_receipt=${DEX_VALIDATION_RECEIPT:-build/exec/dex-validation-receipt.txt}
+current_head_receipt=${DEX_CURRENT_HEAD_RECEIPT:-build/exec/current-head-receipt.tsv}
+provenance_required=${DEX_PROVENANCE_REQUIRED:-0}
 backend_revision=${BACKEND_REVISION:-$(git rev-parse HEAD 2>/dev/null || printf unknown)}
+provenance_status=SKIP
+compiler_revision=unknown
 
 mkdir -p "$(dirname "$receipt")" build/exec
 
@@ -15,18 +20,67 @@ write_not_verified() {
     printf '%s\n' 'source checked        PASS'
     printf '%s\n' 'DEX generated         PASS'
     printf '%s\n' 'DEX parser validation PASS'
+    printf 'provenance checked      %s\n' "$provenance_status"
     printf '%s\n' 'ART loaded             SKIP prerequisite=device_or_emulator'
     printf '%s\n' 'ART executed           SKIP prerequisite=ART_loaded'
     printf '%s\n' 'result checked         SKIP prerequisite=ART_executed'
     printf 'reason                 %s\n' "$reason"
+    printf 'compiler revision      %s\n' "$compiler_revision"
     printf 'backend revision       %s\n' "$backend_revision"
   } >"$receipt"
   cat "$receipt"
   exit 2
 }
 
+write_provenance_failure() {
+  reason=$1
+  provenance_status=FAIL
+  {
+    printf '%s\n' 'source checked        PASS'
+    printf '%s\n' 'DEX generated         PASS'
+    printf '%s\n' 'DEX parser validation PASS'
+    printf '%s\n' 'provenance checked      FAIL'
+    printf '%s\n' 'ART loaded             SKIP prerequisite=provenance_checked'
+    printf '%s\n' 'ART executed           SKIP prerequisite=ART_loaded'
+    printf '%s\n' 'result checked         SKIP prerequisite=ART_executed'
+    printf 'reason                 %s\n' "$reason"
+    printf 'compiler revision      %s\n' "$compiler_revision"
+    printf 'backend revision       %s\n' "$backend_revision"
+  } >"$receipt"
+  cat "$receipt"
+  exit 1
+}
+
 [ -f "$candidate" ] || write_not_verified "candidate classes.dex is absent"
 candidate_hash=$(sha256sum "$candidate" | cut -d' ' -f1)
+
+if [ -f "$validation_receipt" ] || [ -f "$current_head_receipt" ] || [ "$provenance_required" = 1 ]; then
+  [ -f "$validation_receipt" ] || \
+    write_provenance_failure "DEX validation receipt is absent"
+  [ -f "$current_head_receipt" ] || \
+    write_provenance_failure "current-head receipt is absent"
+
+  validated_hash=$(awk '$1 == "classes.dex" && $2 == "SHA-256" { print $3; exit }' "$validation_receipt")
+  receipt_backend=$(awk -F '\t' '$1 == "resolved_sha" { print $2; exit }' "$current_head_receipt")
+  compiler_revision=$(awk -F '\t' '$1 == "dependent_resolved_sha" { print $2; exit }' "$current_head_receipt")
+  dex_validation_status=$(awk -F '\t' '$1 == "stage" && $2 == "dex_validation" { print $3; exit }' "$current_head_receipt")
+
+  [ -n "$validated_hash" ] || \
+    write_provenance_failure "DEX validation receipt has no classes.dex SHA-256"
+  [ -n "$receipt_backend" ] || \
+    write_provenance_failure "current-head receipt has no backend SHA"
+  [ -n "$compiler_revision" ] || \
+    write_provenance_failure "current-head receipt has no Idriç SHA"
+  [ "$dex_validation_status" = PASS ] || \
+    write_provenance_failure "upstream DEX validation is not PASS"
+  [ "$validated_hash" = "$candidate_hash" ] || \
+    write_provenance_failure "classes.dex hash differs from validated candidate"
+  [ "$receipt_backend" = "$backend_revision" ] || \
+    write_provenance_failure "backend checkout differs from validated backend revision"
+
+  provenance_status=PASS
+fi
+
 [ -n "$smali_jar" ] && [ -f "$smali_jar" ] || \
   write_not_verified "SMALI_JAR is unavailable for the external runner"
 command -v "$adb_command" >/dev/null 2>&1 || \
@@ -70,12 +124,14 @@ if [ "$runtime_status" -ne 0 ]; then
     printf '%s\n' 'source checked        PASS'
     printf '%s\n' 'DEX generated         PASS'
     printf '%s\n' 'DEX parser validation PASS'
+    printf 'provenance checked      %s\n' "$provenance_status"
     printf 'ART loaded             %s\n' "$loaded_status"
     printf 'ART executed           %s\n' "$executed_status"
     printf 'result checked         %s\n' "$result_status"
     printf 'runner exit status      %s\n' "$runtime_status"
     printf 'runtime output           %s\n' "$runtime_output"
     printf 'runtime identity        %s\n' "$runtime_identity"
+    printf 'compiler revision      %s\n' "$compiler_revision"
     printf 'backend revision       %s\n' "$backend_revision"
     printf 'classes.dex SHA-256    %s\n' "$candidate_hash"
   } >"$receipt"
@@ -87,6 +143,7 @@ fi
   printf '%s\n' 'source checked        PASS'
   printf '%s\n' 'DEX generated         PASS'
   printf '%s\n' 'DEX parser validation PASS'
+  printf 'provenance checked      %s\n' "$provenance_status"
   printf '%s\n' 'ART loaded             PASS'
   printf '%s\n' 'ART executed           PASS'
   printf '%s\n' 'result checked         PASS'
@@ -99,6 +156,7 @@ fi
   printf '%s\n' 'constant cutovers      PASS'
   printf '%s\n' 'Int32 min/max          PASS'
   printf 'runtime identity        %s\n' "$runtime_identity"
+  printf 'compiler revision      %s\n' "$compiler_revision"
   printf 'backend revision       %s\n' "$backend_revision"
   printf 'classes.dex SHA-256    %s\n' "$candidate_hash"
 } >"$receipt"
