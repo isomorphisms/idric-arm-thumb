@@ -21,6 +21,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      - name: Test ART provenance gate
+        run: sh tests/dex/provenance-gate-test.sh
+
       - name: Check out current declared Idriç compiler
         uses: actions/checkout@v4
         with:
