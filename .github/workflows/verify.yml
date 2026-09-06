@@ -21,6 +21,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      - name: Test ART provenance gate
+        run: sh tests/dex/provenance-gate-test.sh
+
       - name: Check out current declared Idriç compiler
         uses: actions/checkout@v4
         with:
@@ -84,7 +87,7 @@ jobs:
           arch: x86_64
           profile: Nexus 6
           disable-animations: true
-          script: DEX_DEVICE_RECEIPT=build/exec/dex-device-receipt.txt SMALI_JAR="$GITHUB_WORKSPACE/build/oracles/smali-3.0.10.jar" tests/dex/device-acceptance.sh build/exec/classes.dex
+          script: DEX_PROVENANCE_REQUIRED=1 DEX_DEVICE_RECEIPT=build/exec/dex-device-receipt.txt SMALI_JAR="$GITHUB_WORKSPACE/build/oracles/smali-3.0.10.jar" tests/dex/device-acceptance.sh build/exec/classes.dex
 
       - name: Retain ART receipt
         if: always()
