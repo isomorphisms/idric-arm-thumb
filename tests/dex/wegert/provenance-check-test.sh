@@ -42,7 +42,7 @@ run_check() {
   DEX_CURRENT_HEAD_RECEIPT="$current_head" \
   WEGERT_PROVENANCE_RECEIPT="$receipt" \
   BACKEND_REVISION="$backend_revision" \
-    "$check" "$candidate" >/dev/null 2>&1
+    bash "$check" "$candidate" >/dev/null 2>&1
 }
 
 write_host "$candidate_hash"
