@@ -118,7 +118,7 @@ jobs:
           path: build/exec
 
       - name: Verify Wegert direct DEX provenance
-        run: tests/dex/wegert/provenance-check.sh build/exec/wegert/classes.dex
+        run: bash tests/dex/wegert/provenance-check.sh build/exec/wegert/classes.dex
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
