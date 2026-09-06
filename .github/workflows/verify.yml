@@ -101,7 +101,6 @@ jobs:
 
   wegert-art:
     needs: backend
-    if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Check out backend
@@ -114,6 +113,9 @@ jobs:
         with:
           name: direct-dex-evidence
           path: build/exec
+
+      - name: Verify Wegert direct DEX provenance
+        run: tests/dex/wegert/provenance-check.sh build/exec/wegert/classes.dex
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -147,6 +149,7 @@ jobs:
         with:
           name: wegert-art-receipt
           path: |
+            build/exec/wegert/provenance-receipt.txt
             build/exec/wegert/art-receipt.txt
             build/exec/wegert/wegert-test.apk
             build/exec/wegert/libwegert.so
