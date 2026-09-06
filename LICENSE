@@ -1,0 +1,10 @@
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Unless a file says otherwise, original copyrightable material in this repository for which its contributors have authority to grant a license is free software under the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This software is distributed WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+The GNU General Public License version 3 is published at:
+https://www.gnu.org/licenses/gpl-3.0.html
+
+This grant does not relicense external compiler sources, toolchains, test oracles, or other third-party material. Such material retains its own license and notices.
