@@ -58,6 +58,14 @@ checked and lowered boundaries inspectable. See
 [`src/Backend/DEX/README.md`](src/Backend/DEX/README.md) and the concise
 [`src/Backend/DEX/AUDIT.md`](src/Backend/DEX/AUDIT.md).
 
+## Licensing and copied-source provenance
+
+The repository's explicit license choice is GPL-3.0-or-later; see [`LICENSE`](LICENSE). That grant applies only where contributors have authority to license the material.
+
+[`THIRD_PARTY.md`](THIRD_PARTY.md) records the copied/vendored-code audit. In particular, the current ARM/Thumb source is a port/adaptation of substantial code from the older `isomorphisms/idris-arm-backend`, whose audited `main` tree has no explicit repository-wide license. DEX `Codegen.idr` also retains substantial compiler-handoff structure from that port. F-Droid/direct-build use should therefore treat copyright-holder permission for that older lineage as unresolved until an authorized holder confirms GPL-3.0-or-later permission, identifies an existing license/permission, or the affected copied code is independently replaced.
+
+The audit also separates checked-in source from AOSP specification references, downloaded test-only smali/baksmali tooling, external Android/compiler inputs, and generated DEX/APK artifacts.
+
 ## Target ABI
 
 - Android `armeabi-v7a`
@@ -101,7 +109,7 @@ Rejected now:
 - recursion or general calls
 - constructors, closures, allocation, strings, IO, JNI, or Android lifecycle code
 
-The older `idris-arm-backend` remains useful reference code for the broader arithmetic/buffer subset. This repository is the Idriç-specific line and advances only when the current Idriç compiler accepts and verifies the slice.
+The older `idris-arm-backend` is retained as historical/reference material, but substantial current ARM/Thumb code was ported from it; see `THIRD_PARTY.md` for the licensing consequence. This repository is the Idriç-specific line and advances only when the current Idriç compiler accepts and verifies the slice.
 
 ## Next slice
 
