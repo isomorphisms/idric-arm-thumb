@@ -12,6 +12,21 @@ source, `javac`, Kotlin, Gradle, and `d8` are not intermediate compiler stages.
 
 The DEX executable registers only the `dex` code generator. Its acceptance path produces `classes.dex`, validates it independently, and executes it on ART. ARM source modules, ARM emulation, and QEMU are not part of the DEX build or correctness receipt.
 
+## Supported targets
+
+The supported host environment is Debian 13, matching the server deployment
+case. CI performs compiler/backend acceptance inside `debian:13-slim` and
+verifies that userspace before building.
+
+The supported device environment is a physical Android phone. A low-resource
+x86_64 Android emulator is retained only as a fast ART sanity check; it is not
+accepted as proof of the phone target. Physical-device receipts record the
+Android build fingerprint and CPU ABI, and the Wegert/JNI path builds the
+native library for the attached phone's ABI rather than assuming x86_64.
+
+Do not add another host environment merely because it is convenient for CI.
+Prefer the lightest test environment that still represents a deployed target.
+
 The generic compiler package contains only the checked-ANF DEX backend. A
 separate `wegert-dex.ipkg` package contains the current direct-DEX
 NativeActivity/JNI adapter used to exercise an Android application boundary.
