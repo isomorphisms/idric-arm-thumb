@@ -1,5 +1,5 @@
-# Idriç ARM/Thumb backend
+# Idriç backend staging repository
 
-Direct ARMv7 Thumb-2/VFP backend for Idriç.
+Backend implementations branch from this implementation-free base.
 
-Development happens on feature branches until the first executable slice is verified.
+ARM/Thumb and DEX are sibling development lines. Content shared at this branch point should be backend-neutral rather than implementation-specific.
