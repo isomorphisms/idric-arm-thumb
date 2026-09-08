@@ -6,4 +6,3 @@ wrong_width = 19
 
 main : IO ()
 main = pure ()
-

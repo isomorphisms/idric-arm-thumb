@@ -26,9 +26,12 @@ DEX_ORACLE_DISASSEMBLY := build/exec/baksmali-oracle/Idric/Generated.smali
 DEX_MALFORMED_FILE := build/exec/malformed-magic.dex
 DEX_VALIDATION_RECEIPT := build/exec/dex-validation-receipt.txt
 
-.PHONY: check-compiler check driver dex-fixture dex-encoder-selftest \
+.PHONY: branch-separation check-compiler check driver dex-fixture dex-encoder-selftest \
 	dex-determinism dex-reject dex-header-validation dex-parser-validation \
 	dex-oracle-validation dex-malformed-test dex-test dex-device test verify clean
+
+branch-separation:
+	tests/dex/branch-separation.sh
 
 check-compiler:
 	@$(IDRIC) --version
@@ -161,7 +164,7 @@ dex-malformed-test: $(DEX_MALFORMED_FILE) $(BAKSMALI_JAR)
 		exit 1; \
 	fi
 
-dex-test: check dex-fixture dex-encoder-selftest dex-determinism dex-reject \
+dex-test: branch-separation check dex-fixture dex-encoder-selftest dex-determinism dex-reject \
 	dex-parser-validation dex-oracle-validation dex-malformed-test
 	@{ \
 		echo 'source checked        PASS'; \

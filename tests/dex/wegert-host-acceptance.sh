@@ -21,6 +21,7 @@ mkdir -p "$wegert_build" "$oracle_dir"
 rm -rf "$wegert_build/baksmali-candidate" "$wegert_build/baksmali-oracle" \
   "$wegert_build/oracle-source"
 
+"$idric" --build wegert-dex.ipkg
 IDRIS2_PATH="$repo_root/build/ttc:${IDRIS2_PATH:-}" \
   "$idric" --source-dir "$repo_root/tests/dex" \
   "$repo_root/tests/dex/WegertDexGen.idr" -o wegert-dex-gen

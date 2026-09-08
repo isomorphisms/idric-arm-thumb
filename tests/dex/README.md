@@ -37,3 +37,16 @@ invokes the methods in the separately supplied candidate DEX and checks
 arithmetic, both branch directions, move, signed constant cutovers, and Int32
 minimum/maximum values. It runs through Android `app_process`; it does not
 replace or rewrite the candidate.
+
+## Android class/JNI boundary
+
+`wegert-dex.ipkg` is a separate DEX/Android package. It directly emits the
+Java-shaped `WegertActivity` class that ART expects, including NativeActivity
+inheritance, construction, `System.loadLibrary`, a native method declaration,
+and `onCreate`. This is exactly a use of DEX as the ART class target; it does
+not use Java source or a Java compiler pipeline.
+
+The adapter is currently Wegert-specific and hand encoded. The tests therefore
+classify it as Android application-boundary acceptance, not as evidence that
+the generic checked-ANF lowerer already supports arbitrary classes or Android
+framework calls.

@@ -4,6 +4,12 @@ DEX is an Android Runtime target, not a processor ABI. This backend emits one
 small DEX 035 application-code class directly and leaves ARMv7, AArch64, x86,
 or x86-64 machine-code generation to ART.
 
+DEX is also ART's class-and-method executable format. Using its class model or
+calling Android framework classes is not an indirect Java build. The direct
+boundary means that Idriç owns the DEX instructions and metadata without
+generating Java source or passing program semantics through `javac`, Kotlin,
+Gradle, or `d8`.
+
 The executable path is now:
 
 ```text
@@ -97,14 +103,23 @@ job; it does not require a permanently attached phone.
 See [`AUDIT.md`](./AUDIT.md) for the starting boundary and
 [`OPCODES.md`](./OPCODES.md) for the complete opcode inventory.
 
-## Explicitly unsupported
+## Current generic compiler boundary
 
-The first slice does not claim general calls, recursion, constructors, objects,
-arrays, fields, strings, exceptions, monitors, annotations, debug data, wide
-64-bit values, floats, Float16, Android framework calls, lifecycle classes,
-resources, APK packaging, signing, or source-level IO. Unsupported ANF and DEX
-plans fail; there is no RefC, Java, Chez, ARM Thumb, smali, or d8 fallback.
+The checked-ANF compiler slice does not yet claim general calls, recursion,
+constructors, objects, arrays, fields, strings, exceptions, monitors,
+annotations, debug data, wide 64-bit values, floats, Float16, Android framework
+calls, lifecycle classes, resources, APK packaging, signing, or source-level
+IO. These are limitations of the present slice, not a rule forbidding DEX from
+representing them. Unsupported ANF and DEX plans fail; there is no RefC,
+Java-source, `javac`, Kotlin, Gradle, ARM Thumb, smali-candidate, or `d8`
+fallback.
 
-APK/UI machinery is intentionally outside the semantic backend. A framework
-call or other Android-facing extension should be added only with a concrete
-checked Idriç fixture that requires it.
+The separate `wegert-dex.ipkg` package directly emits the current
+`NativeActivity` subclass and JNI declaration as an Android application
+adapter. It proves that direct DEX can express the Java-shaped class boundary
+ART expects without a Java compiler. It is not yet produced by the generic
+checked-ANF lowering above.
+
+APK/UI machinery remains outside the generic semantic lowering. A framework
+call or other Android-facing extension to that lowering should be added with a
+concrete checked Idriç fixture that requires it.

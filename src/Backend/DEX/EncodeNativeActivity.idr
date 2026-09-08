@@ -146,15 +146,17 @@ wegert_strings =
 
 ||| Directly encode the exact first Wegert Android lifecycle shell.
 |||
-||| This is intentionally not a general Java object model. It owns only the
-||| metadata and opcodes required by the checked oracle:
+||| This is a direct DEX encoding of the Java-shaped class boundary ART and
+||| Android expect. It is intentionally not general class/object lowering; it
+||| owns only the metadata and opcodes required by the checked oracle:
 |||   * WegertActivity extends NativeActivity
 |||   * <clinit> loads "wegert"
 |||   * <init> delegates to NativeActivity.<init>
 |||   * public static native jniProbe()I
 |||   * onCreate(Bundle) calls jniProbe, then NativeActivity.onCreate
 |||
-||| No assembler, javac, Kotlin compiler, or d8 participates in this encoder.
+||| No Java source, assembler, javac, Kotlin compiler, Gradle, or d8
+||| participates in this encoder.
 public export
 encode_wegert_activity_dex : Either String (List Int)
 encode_wegert_activity_dex = do
