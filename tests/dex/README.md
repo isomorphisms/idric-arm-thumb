@@ -38,6 +38,48 @@ arithmetic, both branch directions, move, signed constant cutovers, and Int32
 minimum/maximum values. It runs through Android `app_process`; it does not
 replace or rewrite the candidate.
 
+## Supported environments and test order
+
+The host target is Debian 13. CI runs the compiler/backend acceptance inside
+`debian:13-slim` and asserts `/etc/os-release` before building. The surrounding
+GitHub-hosted VM is only CI infrastructure; Ubuntu is not a supported host
+claim.
+
+Android acceptance has two deliberately different levels:
+
+1. one low-resource x86_64 emulator boot provides a fast ART sanity check for
+   both the direct DEX candidate and the Wegert/JNI slice;
+2. a physical Android phone is authoritative device evidence.
+
+The emulator job is not called phone acceptance. It boots only once for both
+runtime checks and uses a headless, low-memory configuration.
+
+For a connected physical phone, run the host DEX validation first, then:
+
+```sh
+SMALI_JAR="$PWD/build/oracles/smali-3.0.10.jar" \
+  sh tests/dex/phone-acceptance.sh build/exec/classes.dex
+```
+
+`phone-acceptance.sh` rejects Android emulators using the QEMU properties,
+then records the real device build fingerprint and CPU ABI in the receipt.
+
+For the Wegert NativeActivity/JNI slice, with the Android SDK/NDK available:
+
+```sh
+IDRIC=/path/to/idris2 \
+  bash tests/dex/wegert/phone-acceptance.sh
+```
+
+That path reads `ro.product.cpu.abi` from the attached phone, builds
+`libwegert.so` for that ABI (`armeabi-v7a`, `arm64-v8a`, x86, or x86_64),
+packages the matching APK, installs it, and requires the JNI sentinel and
+`ANativeActivity_onCreate` on the physical device.
+
+Alpine/musl is not a target merely because its container image is smaller.
+Use a lighter environment when it still represents a deployed environment;
+do not introduce a third compatibility target solely for CI convenience.
+
 ## Android class/JNI boundary
 
 `wegert-dex.ipkg` is a separate DEX/Android package. It directly emits the
