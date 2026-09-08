@@ -86,6 +86,13 @@ jobs:
             build/exec/wegert/host-receipt.txt
             build/exec/wegert/baksmali-candidate/org/isomorphisms/wegert/WegertActivity.smali
             build/exec/wegert/baksmali-oracle/org/isomorphisms/wegert/WegertActivity.smali
+            build/exec/native-shell/host-receipt.txt
+            build/exec/native-shell/wegert/classes.dex
+            build/exec/native-shell/wegert/classes-first.dex
+            build/exec/native-shell/wegert/disassembly/org/isomorphisms/wegert/WegertActivity.smali
+            build/exec/native-shell/analytic-continuation/classes.dex
+            build/exec/native-shell/analytic-continuation/classes-first.dex
+            build/exec/native-shell/analytic-continuation/disassembly/org/isomorphisms/analyticcontinuation/ExplorerActivity.smali
           if-no-files-found: warn
 
   android-emulator-sanity:
@@ -161,4 +168,128 @@ jobs:
             build/exec/wegert/emulator-receipt.txt
             build/exec/wegert/wegert-test.apk
             build/exec/wegert/libwegert.so
+          if-no-files-found: warn
+
+  real-native-app-direct-dex:
+    name: Direct DEX + real native explorers / x86_64 emulator
+    needs: debian-host
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out DEX backend
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download direct DEX shells
+        uses: actions/download-artifact@v4
+        with:
+          name: direct-dex-evidence
+          path: build/exec
+
+      - name: Check out proven Wegert app head
+        uses: actions/checkout@v4
+        with:
+          repository: isomorphismes/wegert
+          ref: build/backend-apk-matrix
+          path: apps/wegert
+          persist-credentials: false
+
+      - name: Check out proven Analytic Continuation app head
+        uses: actions/checkout@v4
+        with:
+          repository: isomorphismes/analytic-continuation
+          ref: build/backend-apk-matrix
+          path: apps/analytic-continuation
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android build inputs
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" \
+            "ndk;29.0.14206865" "cmake;3.22.1"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Build the existing real native APK payloads
+        run: |
+          gradle --no-daemon -p apps/wegert/_/build :app:assembleDebug
+          (
+            cd apps/analytic-continuation/android
+            ./gradlew --no-daemon :app:assembleDebug
+          )
+
+      - name: Replace the hosted class layer with direct DEX
+        env:
+          ANDROID_BUILD_TOOLS: ${{ env.ANDROID_HOME }}/build-tools/36.0.0
+        run: |
+          bash tests/dex/native-activity/build-apk-from-native-base.sh \
+            apps/wegert/_/build/app/build/outputs/apk/debug/app-debug.apk \
+            build/exec/native-shell/wegert/classes.dex \
+            tests/dex/native-activity/wegert-manifest.xml \
+            build/exec/native-shell/wegert/wegert-direct-dex.apk
+          bash tests/dex/native-activity/build-apk-from-native-base.sh \
+            apps/analytic-continuation/android/app/build/outputs/apk/debug/app-debug.apk \
+            build/exec/native-shell/analytic-continuation/classes.dex \
+            tests/dex/native-activity/analytic-continuation-manifest.xml \
+            build/exec/native-shell/analytic-continuation/analytic-continuation-direct-dex.apk
+
+      - name: Exercise both real renderers behind direct DEX
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          profile: medium_phone
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save -no-metrics
+          script: |
+            set -euo pipefail
+
+            adb install -r build/exec/native-shell/wegert/wegert-direct-dex.apk
+            adb logcat -c
+            adb shell am start -S -W -n org.isomorphisms.wegert/.WegertActivity
+            timeout 20 bash -c 'until adb logcat -d | grep -Fq "EGL surface ready:"; do sleep 1; done'
+            sleep 2
+            adb logcat -d > build/exec/native-shell/wegert/real-app-emulator.log
+            adb exec-out screencap -p > build/exec/native-shell/wegert/real-app-emulator.png
+            adb shell pidof -s org.isomorphisms.wegert | tr -d '\r' | grep -Eq '^[0-9]+$'
+            grep -Fq 'EGL surface ready:' build/exec/native-shell/wegert/real-app-emulator.log
+            ! grep -Eiq 'shader compilation failed|program link failed|FATAL EXCEPTION' build/exec/native-shell/wegert/real-app-emulator.log
+            adb uninstall org.isomorphisms.wegert
+
+            adb install -r build/exec/native-shell/analytic-continuation/analytic-continuation-direct-dex.apk
+            adb logcat -c
+            adb shell am start -S -W -n org.isomorphisms.analyticcontinuation/.ExplorerActivity
+            timeout 20 bash -c 'until adb logcat -d | grep -Fq "holomorphic field ready:"; do sleep 1; done'
+            sleep 3
+            adb logcat -d > build/exec/native-shell/analytic-continuation/real-app-emulator.log
+            adb exec-out screencap -p > build/exec/native-shell/analytic-continuation/real-app-emulator.png
+            adb shell pidof -s org.isomorphisms.analyticcontinuation | tr -d '\r' | grep -Eq '^[0-9]+$'
+            grep -Fq 'holomorphic field started with 3 workers' build/exec/native-shell/analytic-continuation/real-app-emulator.log
+            grep -Fq 'holomorphic field ready:' build/exec/native-shell/analytic-continuation/real-app-emulator.log
+            grep -Fq 'holomorphic field first frame:' build/exec/native-shell/analytic-continuation/real-app-emulator.log
+            ! grep -Eiq 'shader compilation failed|program link failed|FATAL EXCEPTION' build/exec/native-shell/analytic-continuation/real-app-emulator.log
+
+      - name: Retain real direct-DEX APKs and emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-native-explorers-direct-dex
+          path: |
+            build/exec/native-shell/wegert/wegert-direct-dex.apk
+            build/exec/native-shell/wegert/real-app-emulator.log
+            build/exec/native-shell/wegert/real-app-emulator.png
+            build/exec/native-shell/analytic-continuation/analytic-continuation-direct-dex.apk
+            build/exec/native-shell/analytic-continuation/real-app-emulator.log
+            build/exec/native-shell/analytic-continuation/real-app-emulator.png
           if-no-files-found: warn
