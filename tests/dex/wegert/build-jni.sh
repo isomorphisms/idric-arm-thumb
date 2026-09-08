@@ -4,6 +4,18 @@ set -Eeuo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 output=${1:-"$repo_root/build/exec/wegert/libwegert.so"}
 api=${ANDROID_API:-29}
+abi=${ANDROID_ABI:-x86_64}
+
+case "$abi" in
+  x86_64) target=x86_64-linux-android ;;
+  x86) target=i686-linux-android ;;
+  arm64-v8a) target=aarch64-linux-android ;;
+  armeabi-v7a) target=armv7a-linux-androideabi ;;
+  *)
+    echo "unsupported Android ABI: $abi" >&2
+    exit 1
+    ;;
+esac
 
 ndk=${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}
 if [[ -z $ndk ]]; then
@@ -20,9 +32,15 @@ fi
   exit 1
 }
 
-clang="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android${api}-clang"
+ndk_bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+clang="$ndk_bin/${target}${api}-clang"
+readelf="$ndk_bin/llvm-readelf"
 [[ -x $clang ]] || {
-  echo "Android x86_64 clang not found: $clang" >&2
+  echo "Android $abi clang not found: $clang" >&2
+  exit 1
+}
+[[ -x $readelf ]] || {
+  echo "Android NDK llvm-readelf not found: $readelf" >&2
   exit 1
 }
 
@@ -30,5 +48,6 @@ mkdir -p "$(dirname -- "$output")"
 "$clang" -shared -fPIC -O2 -Wl,--no-undefined -Wl,-soname,libwegert.so \
   "$repo_root/tests/dex/wegert/wegert_probe.c" -llog -landroid -o "$output"
 
-readelf -Ws "$output" | grep -q 'Java_org_isomorphisms_wegert_WegertActivity_jniProbe'
-readelf -Ws "$output" | grep -q 'ANativeActivity_onCreate'
+"$readelf" -Ws "$output" | grep -q 'Java_org_isomorphisms_wegert_WegertActivity_jniProbe'
+"$readelf" -Ws "$output" | grep -q 'ANativeActivity_onCreate'
+printf 'JNI ABI                 %s\n' "$abi"
