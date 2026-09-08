@@ -4,6 +4,7 @@ set -eu
 candidate=${1:-build/exec/classes.dex}
 adb_command=${ADB:-adb}
 receipt=${DEX_PHONE_RECEIPT:-build/exec/dex-phone-receipt.txt}
+smali_jar=${SMALI_JAR:-build/oracles/smali-3.0.10.jar}
 
 mkdir -p "$(dirname "$receipt")"
 
@@ -19,6 +20,7 @@ fail_phone() {
 
 command -v "$adb_command" >/dev/null 2>&1 || fail_phone 'adb is unavailable'
 "$adb_command" get-state >/dev/null 2>&1 || fail_phone 'no Android device is connected'
+[ -f "$smali_jar" ] || fail_phone "runtime harness assembler is absent: $smali_jar"
 
 kernel_qemu=$("$adb_command" shell getprop ro.kernel.qemu 2>/dev/null | tr -d '\r')
 boot_qemu=$("$adb_command" shell getprop ro.boot.qemu 2>/dev/null | tr -d '\r')
@@ -30,7 +32,7 @@ phone_fingerprint=$("$adb_command" shell getprop ro.build.fingerprint | tr -d '\
 [ -n "$phone_abi" ] || fail_phone 'connected phone did not report a CPU ABI'
 [ -n "$phone_fingerprint" ] || fail_phone 'connected phone did not report a build fingerprint'
 
-DEX_DEVICE_RECEIPT="$receipt" \
+SMALI_JAR="$smali_jar" DEX_DEVICE_RECEIPT="$receipt" \
   tests/dex/device-acceptance.sh "$candidate"
 
 {
