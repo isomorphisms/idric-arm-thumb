@@ -1,0 +1,12 @@
+package wegert_dex
+version = 0.1.0
+
+sourcedir = "src"
+
+depends = idris2
+
+modules =
+  Backend.DEX.IR,
+  Backend.DEX.Hash,
+  Backend.DEX.Encode,
+  Backend.DEX.EncodeNativeActivity
