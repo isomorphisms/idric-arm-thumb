@@ -19,3 +19,11 @@ That adapter is DEX/Android work, but it is not presented as generic Idriç
 lowering.
 
 See `src/Backend/DEX/README.md` and `tests/dex/README.md` for the current executable slice and evidence layers.
+
+## Licensing and provenance
+
+The repository license is GPL-3.0-or-later where contributors have authority
+to grant it. [`THIRD_PARTY.md`](THIRD_PARTY.md) records external tools and one
+unresolved copied-source issue in the DEX compiler-handoff glue. Independent
+Git ancestry from ARM fixes the backend architecture; it does not by itself
+erase copied-text provenance.
