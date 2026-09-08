@@ -1,0 +1,9 @@
+module InvalidDexInt
+
+%export "dex:wrong_width"
+wrong_width : Int
+wrong_width = 19
+
+main : IO ()
+main = pure ()
+

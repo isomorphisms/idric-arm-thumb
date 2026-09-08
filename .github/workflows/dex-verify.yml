@@ -1,0 +1,162 @@
+name: dex verify
+
+on:
+  push:
+    branches: [main, dex/sibling-backend-boundary]
+  pull_request:
+
+concurrency:
+  group: dex-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IDRIC_COMPILER_REF: Idriç
+
+jobs:
+  dex:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out DEX backend
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Test ART provenance gate
+        run: sh tests/dex/provenance-gate-test.sh
+
+      - name: Test Wegert ART provenance gate
+        run: bash tests/dex/wegert/provenance-check-test.sh
+
+      - name: Check out current declared Idriç compiler
+        uses: actions/checkout@v4
+        with:
+          repository: isomorphisms/Idric
+          ref: ${{ env.IDRIC_COMPILER_REF }}
+          path: Idric
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl ca-certificates chezscheme file libgmp-dev
+          java -version
+          python3 --version
+
+      - name: Run current-head compiler and DEX acceptance
+        env:
+          IDRIC_REPO: ${{ github.workspace }}/Idric
+        run: tests/dex/run-current-head-ci.sh
+
+      - name: Retain DEX evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-dex-evidence
+          path: |
+            build/exec/classes.dex
+            build/exec/classes.checked.anf
+            build/exec/classes.dex.plan
+            build/exec/classes.smali
+            build/exec/dex-validation-receipt.txt
+            build/exec/current-head-receipt.tsv
+            build/exec/wegert/classes.dex
+            build/exec/wegert/classes-first.dex
+            build/exec/wegert/host-receipt.txt
+            build/exec/wegert/baksmali-candidate/org/isomorphisms/wegert/WegertActivity.smali
+            build/exec/wegert/baksmali-oracle/org/isomorphisms/wegert/WegertActivity.smali
+          if-no-files-found: warn
+
+  dex-art:
+    needs: dex
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out DEX backend
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download direct DEX candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: direct-dex-evidence
+          path: build/exec
+
+      - name: Fetch pinned runtime-harness assembler
+        run: |
+          mkdir -p build/oracles
+          curl -fL --retry 3 \
+            https://github.com/baksmali/smali/releases/download/3.0.10/smali-3.0.10-fat-release.jar \
+            -o build/oracles/smali-3.0.10.jar
+          echo '32fa0e88a6c397b3922201adf5f3e534fbaed5a663c71d0c558c3ddce0af844a  build/oracles/smali-3.0.10.jar' | sha256sum -c -
+
+      - name: Execute candidate on Android Runtime
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: true
+          script: DEX_PROVENANCE_REQUIRED=1 DEX_DEVICE_RECEIPT=build/exec/dex-device-receipt.txt SMALI_JAR="$GITHUB_WORKSPACE/build/oracles/smali-3.0.10.jar" tests/dex/device-acceptance.sh build/exec/classes.dex
+
+      - name: Retain ART receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dex-art-receipt
+          path: build/exec/dex-device-receipt.txt
+          if-no-files-found: warn
+
+  wegert-art:
+    needs: dex
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out DEX backend
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download direct DEX evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: direct-dex-evidence
+          path: build/exec
+
+      - name: Verify Wegert direct DEX provenance
+        run: bash tests/dex/wegert/provenance-check.sh build/exec/wegert/classes.dex
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packaging and NDK inputs
+        run: |
+          yes | sdkmanager "platforms;android-29" "build-tools;35.0.0" "ndk;26.3.11579264"
+
+      - name: Build JNI probe and package direct DEX APK
+        run: |
+          ANDROID_NDK_HOME="$ANDROID_HOME/ndk/26.3.11579264" \
+            tests/dex/wegert/build-jni.sh build/exec/wegert/libwegert.so
+          ANDROID_BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0" \
+            tests/dex/wegert/build-apk.sh \
+            build/exec/wegert/classes.dex \
+            build/exec/wegert/libwegert.so \
+            build/exec/wegert/wegert-test.apk
+
+      - name: Execute Wegert lifecycle/JNI slice on ART
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: true
+          script: WEGERT_ART_RECEIPT=build/exec/wegert/art-receipt.txt tests/dex/wegert/art-acceptance.sh build/exec/wegert/wegert-test.apk
+
+      - name: Retain Wegert ART evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wegert-art-receipt
+          path: |
+            build/exec/wegert/provenance-receipt.txt
+            build/exec/wegert/art-receipt.txt
+            build/exec/wegert/wegert-test.apk
+            build/exec/wegert/libwegert.so
+          if-no-files-found: warn

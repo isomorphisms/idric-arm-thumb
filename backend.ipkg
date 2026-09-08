@@ -1,0 +1,19 @@
+package idric_dex
+version = 0.1.0
+
+sourcedir = "src"
+
+depends = idris2
+
+modules =
+  Backend.DEX.IR,
+  Backend.DEX.Lower,
+  Backend.DEX.Hash,
+  Backend.DEX.Encode,
+  Backend.DEX.EncodeNativeActivity,
+  Backend.DEX.Smali,
+  Backend.DEX.Codegen,
+  Backend.DEX.Main
+
+main = Backend.DEX.Main
+executable = idric-dex
