@@ -191,7 +191,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: isomorphismes/wegert
-          ref: build/backend-apk-matrix
+          ref: 8fb8ce3a8eb24c96e9791248eb60016b0d2d87cb
           path: apps/wegert
           persist-credentials: false
 
@@ -199,7 +199,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: isomorphismes/analytic-continuation
-          ref: build/backend-apk-matrix
+          ref: 196b567c3de420dca52ed6164802d26aec0e9924
           path: apps/analytic-continuation
           persist-credentials: false
 
@@ -253,7 +253,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save -no-metrics
           script: |
-            set -euo pipefail
+            set -eu
 
             adb install -r build/exec/native-shell/wegert/wegert-direct-dex.apk
             adb logcat -c
