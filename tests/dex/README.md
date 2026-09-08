@@ -57,12 +57,12 @@ runtime checks and uses a headless, low-memory configuration.
 For a connected physical phone, run the host DEX validation first, then:
 
 ```sh
-SMALI_JAR="$PWD/build/oracles/smali-3.0.10.jar" \
-  sh tests/dex/phone-acceptance.sh build/exec/classes.dex
+sh tests/dex/phone-acceptance.sh build/exec/classes.dex
 ```
 
-`phone-acceptance.sh` rejects Android emulators using the QEMU properties,
-then records the real device build fingerprint and CPU ABI in the receipt.
+`phone-acceptance.sh` uses the Smali harness already fetched by `dex-test`,
+rejects Android emulators using the QEMU properties, then records the real
+device build fingerprint and CPU ABI in the receipt.
 
 For the Wegert NativeActivity/JNI slice, with the Android SDK/NDK available:
 
