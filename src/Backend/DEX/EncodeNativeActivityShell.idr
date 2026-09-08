@@ -74,8 +74,8 @@ ascii_bytes value = traverse encode_character (unpack value)
 private
 valid_activity_descriptor : String -> Bool
 valid_activity_descriptor descriptor =
-  isPrefixOf "Lorg/" (unpack descriptor) &&
-  isSuffixOf ";" (unpack descriptor)
+  isPrefixOf (unpack "Lorg/") (unpack descriptor) &&
+  isSuffixOf (unpack ";") (unpack descriptor)
 
 private
 record StringLayout where
