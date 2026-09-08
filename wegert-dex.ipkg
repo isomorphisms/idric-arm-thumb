@@ -9,4 +9,5 @@ modules =
   Backend.DEX.IR,
   Backend.DEX.Hash,
   Backend.DEX.Encode,
-  Backend.DEX.EncodeNativeActivity
+  Backend.DEX.EncodeNativeActivity,
+  Backend.DEX.EncodeNativeActivityShell
