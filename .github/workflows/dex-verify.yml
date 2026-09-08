@@ -31,6 +31,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
+      - name: Trust checked-out workspace inside Debian container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Confirm supported host userspace
         run: |
           . /etc/os-release
