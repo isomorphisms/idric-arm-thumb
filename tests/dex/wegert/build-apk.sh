@@ -6,6 +6,15 @@ classes_dex=${1:-"$repo_root/build/exec/wegert/classes.dex"}
 native_library=${2:-"$repo_root/build/exec/wegert/libwegert.so"}
 output=${3:-"$repo_root/build/exec/wegert/wegert-test.apk"}
 android_home=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
+abi=${ANDROID_ABI:-x86_64}
+
+case "$abi" in
+  x86_64|x86|arm64-v8a|armeabi-v7a) ;;
+  *)
+    echo "unsupported Android ABI: $abi" >&2
+    exit 1
+    ;;
+esac
 
 [[ -f $classes_dex ]] || { echo "missing direct classes.dex: $classes_dex" >&2; exit 1; }
 [[ -f $native_library ]] || { echo "missing libwegert.so: $native_library" >&2; exit 1; }
@@ -28,8 +37,8 @@ done
 
 work="$repo_root/build/exec/wegert/apk-work"
 rm -rf "$work"
-mkdir -p "$work/lib/x86_64" "$(dirname -- "$output")"
-cp "$native_library" "$work/lib/x86_64/libwegert.so"
+mkdir -p "$work/lib/$abi" "$(dirname -- "$output")"
+cp "$native_library" "$work/lib/$abi/libwegert.so"
 
 unsigned="$work/manifest.apk"
 unaligned="$work/unaligned.apk"
@@ -47,7 +56,7 @@ cp "$unsigned" "$unaligned"
 zip -q -j "$unaligned" "$classes_dex"
 (
   cd "$work"
-  zip -q -u "$unaligned" lib/x86_64/libwegert.so
+  zip -q -u "$unaligned" "lib/$abi/libwegert.so"
 )
 
 "$zipalign" -f -p 4 "$unaligned" "$aligned"
@@ -67,3 +76,4 @@ keytool -genkeypair -noprompt \
   --out "$output" \
   "$aligned"
 "$apksigner" verify --verbose "$output"
+printf 'APK native ABI          %s\n' "$abi"
