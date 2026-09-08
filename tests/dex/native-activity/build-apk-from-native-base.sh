@@ -14,7 +14,7 @@ done
 [[ -n $android_home ]] || { echo 'ANDROID_HOME/ANDROID_SDK_ROOT is required' >&2; exit 1; }
 
 build_tools=${ANDROID_BUILD_TOOLS:-}
-if [[ -z $build_tools ]]; then
+if [[ -z $build_tools || ! -d $build_tools ]]; then
   build_tools=$(find "$android_home/build-tools" -mindepth 1 -maxdepth 1 -type d |
     sort -V | tail -n 1)
 fi
@@ -83,6 +83,6 @@ grep -Eq '[[:space:]]lib/arm64-v8a/.+\.so$' "$work/files.txt"
 grep -Eq '[[:space:]]lib/armeabi-v7a/.+\.so$' "$work/files.txt"
 grep -Eq '[[:space:]]assets/.+' "$work/files.txt"
 
-printf 'direct DEX APK         %s\n' "$output"
+printf 'direct DEX APK          %s\n' "$output"
 printf 'direct classes SHA-256 %s\n' "$(sha256sum "$classes_dex" | cut -d' ' -f1)"
 printf 'base native APK SHA-256 %s\n' "$(sha256sum "$base_apk" | cut -d' ' -f1)"
