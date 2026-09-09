@@ -23,7 +23,8 @@ assembly_sha=$(sha256sum "$assembly" | awk '{print $1}')
 selftest_sha=$(sha256sum "$selftest" | awk '{print $1}')
 
 cat > "$artifact_dir/receipt.tsv" <<EOF
-COMPLEX_PROJECTIVE_THUMB_FOLLOWER	1
+COMPLEX_PROJECTIVE_RECEIPT	1
+role	THUMB_FOLLOWER
 repository	isomorphisms/idric-arm-thumb
 source_head_sha	$source_head
 tested_checkout_sha	$tested_checkout
