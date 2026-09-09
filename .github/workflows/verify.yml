@@ -9,6 +9,9 @@ concurrency:
   group: arm-thumb-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   arm-thumb:
     runs-on: ubuntu-24.04
@@ -22,6 +25,13 @@ jobs:
           repository: isomorphisms/Idric
           ref: 081b9cde0591154839fb5d80d76e5570e0436300
           path: Idric
+
+      - name: Resolve current complex/projective semantic target
+        uses: actions/checkout@v4
+        with:
+          repository: isomorphisms/Idric
+          ref: math/complex-projective-semantics
+          path: IdricComplexSemantics
 
       - name: Install host build tools
         run: |
@@ -38,3 +48,16 @@ jobs:
 
       - name: Compile, inspect, assemble, and execute Thumb verification
         run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Record provisional complex/projective follower status
+        run: |
+          export IDRIC_COMPLEX_SEMANTICS_SHA=$(git -C IdricComplexSemantics rev-parse HEAD)
+          scripts/write_complex_projective_follower_receipt.sh build/complex-projective-follower
+
+      - name: Retain Thumb follower evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: complex-projective-thumb-follower
+          path: build/complex-projective-follower
+          if-no-files-found: warn
