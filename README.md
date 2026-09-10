@@ -1,5 +1,44 @@
-# Idriç ARM/Thumb backend
+# Idriç DEX backend
 
-Direct ARMv7 Thumb-2/VFP backend for Idriç.
+Direct Android Runtime DEX backend for Idriç.
 
-Development happens on feature branches until the first executable slice is verified.
+This development line is a sibling of the ARM/Thumb backend. Both consume checked compiler forms, but DEX lowering, encoding, packaging, and acceptance are independent of ARM instruction selection and execution.
+
+DEX is ART's class-and-method executable format. Direct DEX output may use
+classes, inheritance, constructors, Android framework methods, and native
+method declarations when the program or Android entry boundary needs them.
+The constraint here is that Idriç writes those DEX structures directly: Java
+source, `javac`, Kotlin, Gradle, and `d8` are not intermediate compiler stages.
+
+The DEX executable registers only the `dex` code generator. Its acceptance path produces `classes.dex`, validates it independently, and executes it on ART. ARM source modules, ARM emulation, and QEMU are not part of the DEX build or correctness receipt.
+
+## Supported targets
+
+The supported host environment is Debian 13, matching the server deployment
+case. CI performs compiler/backend acceptance inside `debian:13-slim` and
+verifies that userspace before building.
+
+The supported device environment is a physical Android phone. A low-resource
+x86_64 Android emulator is retained only as a fast ART sanity check; it is not
+accepted as proof of the phone target. Physical-device receipts record the
+Android build fingerprint and CPU ABI, and the Wegert/JNI path builds the
+native library for the attached phone's ABI rather than assuming x86_64.
+
+Do not add another host environment merely because it is convenient for CI.
+Prefer the lightest test environment that still represents a deployed target.
+
+The generic compiler package contains only the checked-ANF DEX backend. A
+separate `wegert-dex.ipkg` package contains the current direct-DEX
+NativeActivity/JNI adapter used to exercise an Android application boundary.
+That adapter is DEX/Android work, but it is not presented as generic Idriç
+lowering.
+
+See `src/Backend/DEX/README.md` and `tests/dex/README.md` for the current executable slice and evidence layers.
+
+## Licensing and provenance
+
+The repository license is GPL-3.0-or-later where contributors have authority
+to grant it. [`THIRD_PARTY.md`](THIRD_PARTY.md) records external tools and one
+unresolved copied-source issue in the DEX compiler-handoff glue. Independent
+Git ancestry from ARM fixes the backend architecture; it does not by itself
+erase copied-text provenance.
