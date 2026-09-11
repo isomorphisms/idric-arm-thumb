@@ -94,7 +94,7 @@ run_stage env IDRIC="$compiler" "$repo_root/tests/dex/wegert-host-acceptance.sh"
 passed="$passed wegert_direct_dex"
 
 current_stage=native_activity_shells
-run_stage env IDRIC="$compiler" "$repo_root/tests/dex/native-activity-shell-acceptance.sh"
+run_stage env IDRIC="$compiler" bash "$repo_root/tests/dex/native-activity-shell-acceptance.sh"
 passed="$passed native_activity_shells"
 
 current_stage=reddit_direct_dex
