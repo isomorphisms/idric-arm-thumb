@@ -160,8 +160,6 @@ jobs:
             build/release/reddit-phone.tar.gz
             build/release/reddit-tablet.tar.gz
             build/release/SHA256SUMS
-            build/exec/reddit/emulator-url.txt
-            build/exec/reddit/emulator-no-token.txt
           if-no-files-found: error
 
   publish-prerelease:
@@ -175,6 +173,10 @@ jobs:
         with:
           name: reddit-android-bundles
           path: release
+
+      - name: Verify downloaded bundle checksums
+        working-directory: release
+        run: sha256sum -c SHA256SUMS
 
       - name: Publish immutable prerelease
         env:
