@@ -120,20 +120,43 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -camera-back none -camera-front none -memory 1024 -cores 2 -gpu swiftshader_indirect
           script: |
             set -eu
+            mkdir -p build/exec/reddit
+            adb logcat -c || true
+            trap 'adb logcat -d -v threadtime > build/exec/reddit/emulator-logcat.txt 2>&1 || true' EXIT
+            adb shell 'getprop ro.build.version.release; getprop ro.product.cpu.abi; getenforce' \
+              > build/exec/reddit/emulator-device.txt 2>&1 || true
             adb shell 'mkdir -p /data/local/tmp/idric-reddit'
             adb push build/exec/reddit/classes.dex /data/local/tmp/idric-reddit/classes.dex
             adb push build/exec/reddit/libreddit_cli-x86_64.so /data/local/tmp/idric-reddit/libreddit_cli.so
+
+            set +e
             adb shell 'CLASSPATH=/data/local/tmp/idric-reddit/classes.dex /system/bin/app_process -Dreddit.library=/data/local/tmp/idric-reddit/libreddit_cli.so /system/bin org.isomorphisms.reddit.RedditCli url "computer science degree regret"' \
-              | tr -d '\r' | tee build/exec/reddit/emulator-url.txt
+              > build/exec/reddit/emulator-url.raw.txt 2>&1
+            url_status=$?
+            set -e
+            printf '%s\n' "$url_status" > build/exec/reddit/emulator-url.status
+            tr -d '\r' < build/exec/reddit/emulator-url.raw.txt \
+              | tee build/exec/reddit/emulator-url.txt
+            test "$url_status" -eq 0
             grep -Fq 'q=computer%20science%20degree%20regret' build/exec/reddit/emulator-url.txt
 
             set +e
             adb shell 'CLASSPATH=/data/local/tmp/idric-reddit/classes.dex /system/bin/app_process -Dreddit.library=/data/local/tmp/idric-reddit/libreddit_cli.so /system/bin org.isomorphisms.reddit.RedditCli search "computer science degree regret"' \
-              >build/exec/reddit/emulator-no-token.txt 2>&1
+              > build/exec/reddit/emulator-no-token.txt 2>&1
             status=$?
             set -e
+            printf '%s\n' "$status" > build/exec/reddit/emulator-no-token.status
+            cat build/exec/reddit/emulator-no-token.txt
             test "$status" -ne 0
             grep -Fq 'reddit: missing REDDIT_ACCESS_TOKEN' build/exec/reddit/emulator-no-token.txt
+
+      - name: Retain emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reddit-emulator-diagnostics
+          path: build/exec/reddit/emulator-*
+          if-no-files-found: warn
 
       - name: Package phone and tablet bundles
         run: |
