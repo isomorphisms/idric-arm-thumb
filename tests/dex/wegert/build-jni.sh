@@ -48,6 +48,9 @@ mkdir -p "$(dirname -- "$output")"
 "$clang" -shared -fPIC -O2 -Wl,--no-undefined -Wl,-soname,libwegert.so \
   "$repo_root/tests/dex/wegert/wegert_probe.c" -llog -landroid -o "$output"
 
-"$readelf" -Ws "$output" | grep -q 'Java_org_isomorphisms_wegert_WegertActivity_jniProbe'
-"$readelf" -Ws "$output" | grep -q 'ANativeActivity_onCreate'
+# Finish readelf before grep -q can close a pipe and make LLVM exit 74.
+# Keep readelf failure fatal even when its partial output contains a match.
+symbols=$("$readelf" -Ws "$output")
+grep -Fq 'Java_org_isomorphisms_wegert_WegertActivity_jniProbe' <<<"$symbols"
+grep -Fq 'ANativeActivity_onCreate' <<<"$symbols"
 printf 'JNI ABI                 %s\n' "$abi"

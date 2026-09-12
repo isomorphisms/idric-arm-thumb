@@ -49,7 +49,9 @@ mkdir -p "$(dirname -- "$output")"
   -Wl,--no-undefined -Wl,-soname,libreddit_cli.so \
   "$repo_root/tests/dex/reddit/reddit_cli.c" -o "$output"
 
-"$readelf" -Ws "$output" |
-  grep -q 'Java_org_isomorphisms_reddit_RedditCli_run'
+# Finish readelf before grep -q can close a pipe and make LLVM exit 74.
+# Keep readelf failure fatal even when its partial output contains a match.
+symbols=$("$readelf" -Ws "$output")
+grep -Fq 'Java_org_isomorphisms_reddit_RedditCli_run' <<<"$symbols"
 printf 'Reddit JNI ABI          %s\n' "$abi"
 printf 'Reddit JNI API          %s\n' "$api"

@@ -64,6 +64,9 @@ jobs:
           java -version
           python3 --version
 
+      - name: Test JNI build-script boundary (mock NDK only)
+        run: python3 tests/dex/jni-build-boundary-test.py
+
       - name: Run current-head compiler and DEX acceptance
         env:
           IDRIC_REPO: ${{ github.workspace }}/Idric
