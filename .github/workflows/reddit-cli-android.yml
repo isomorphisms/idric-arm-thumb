@@ -1,0 +1,196 @@
+name: reddit CLI Android
+
+on:
+  push:
+    branches: [dex/reddit-cli-jni]
+  pull_request:
+    paths:
+      - 'src/Backend/DEX/EncodeRedditCli.idr'
+      - 'reddit-dex.ipkg'
+      - 'tests/dex/RedditCliDexGen.idr'
+      - 'tests/dex/oracles/RedditCli.smali'
+      - 'tests/dex/reddit/**'
+      - 'tests/dex/reddit-host-acceptance.sh'
+      - 'tests/dex/run-current-head-ci.sh'
+      - '.github/workflows/reddit-cli-android.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reddit-cli-android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IDRIC_COMPILER_REF: Idriç
+  NDK_VERSION: 26.3.11579264
+
+jobs:
+  direct-dex:
+    name: Direct Reddit DEX / Debian 13
+    runs-on: ubuntu-24.04
+    container:
+      image: debian:13-slim
+    steps:
+      - name: Install checkout tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Check out DEX backend
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Trust workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Check out current Idriç
+        uses: actions/checkout@v4
+        with:
+          repository: isomorphisms/Idric
+          ref: ${{ env.IDRIC_COMPILER_REF }}
+          path: Idric
+
+      - name: Install host build inputs
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            bash build-essential ca-certificates chezscheme curl \
+            default-jre-headless file libgmp-dev python3
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Build and validate direct DEX
+        env:
+          IDRIC_REPO: ${{ github.workspace }}/Idric
+        run: tests/dex/run-current-head-ci.sh
+
+      - name: Retain direct Reddit DEX
+        uses: actions/upload-artifact@v4
+        with:
+          name: reddit-direct-dex
+          path: |
+            build/exec/reddit/classes.dex
+            build/exec/reddit/host-receipt.txt
+          if-no-files-found: error
+
+  android-bundles:
+    name: Android JNI bundles / ARMv7 + AArch64
+    needs: direct-dex
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out DEX/JNI source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download direct DEX
+        uses: actions/download-artifact@v4
+        with:
+          name: reddit-direct-dex
+          path: build/exec/reddit
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: yes | sdkmanager "platforms;android-29" "ndk;${NDK_VERSION}"
+
+      - name: Build JNI libraries for phone, tablet, and emulator
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+          ANDROID_API: 24
+        run: |
+          ANDROID_ABI=armeabi-v7a bash tests/dex/reddit/build-jni.sh \
+            build/exec/reddit/libreddit_cli-armeabi-v7a.so
+          ANDROID_ABI=arm64-v8a bash tests/dex/reddit/build-jni.sh \
+            build/exec/reddit/libreddit_cli-arm64-v8a.so
+          ANDROID_ABI=x86_64 bash tests/dex/reddit/build-jni.sh \
+            build/exec/reddit/libreddit_cli-x86_64.so
+          file build/exec/reddit/libreddit_cli-*.so
+
+      - name: Exercise DEX to JNI command boundary
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -camera-back none -camera-front none -memory 1024 -cores 2 -gpu swiftshader_indirect
+          script: bash tests/dex/reddit/emulator-acceptance.sh
+
+      - name: Retain emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reddit-emulator-diagnostics
+          path: build/exec/reddit/emulator-*
+          if-no-files-found: warn
+
+      - name: Package phone and tablet bundles
+        run: |
+          set -eu
+          mkdir -p build/release/phone build/release/tablet
+          cp build/exec/reddit/classes.dex build/release/phone/
+          cp build/exec/reddit/classes.dex build/release/tablet/
+          cp build/exec/reddit/libreddit_cli-armeabi-v7a.so \
+            build/release/phone/libreddit_cli.so
+          cp build/exec/reddit/libreddit_cli-arm64-v8a.so \
+            build/release/tablet/libreddit_cli.so
+          cp build/exec/reddit/host-receipt.txt build/release/phone/
+          cp build/exec/reddit/host-receipt.txt build/release/tablet/
+          printf 'target=phone\nabi=armeabi-v7a\nbackend_sha=%s\n' "${GITHUB_SHA}" \
+            >build/release/phone/android-receipt.txt
+          printf 'target=tablet\nabi=arm64-v8a\nbackend_sha=%s\n' "${GITHUB_SHA}" \
+            >build/release/tablet/android-receipt.txt
+          tar -C build/release/phone -czf build/release/reddit-phone.tar.gz .
+          tar -C build/release/tablet -czf build/release/reddit-tablet.tar.gz .
+          (
+            cd build/release
+            sha256sum reddit-phone.tar.gz reddit-tablet.tar.gz > SHA256SUMS
+          )
+          cat build/release/SHA256SUMS
+
+      - name: Retain Android bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: reddit-android-bundles
+          path: |
+            build/release/reddit-phone.tar.gz
+            build/release/reddit-tablet.tar.gz
+            build/release/SHA256SUMS
+          if-no-files-found: error
+
+  publish-prerelease:
+    name: Publish pinned Cat Food inputs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dex/reddit-cli-jni'
+    needs: android-bundles
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Android bundles
+        uses: actions/download-artifact@v4
+        with:
+          name: reddit-android-bundles
+          path: release
+
+      - name: Verify downloaded bundle checksums
+        working-directory: release
+        run: sha256sum -c SHA256SUMS
+
+      - name: Publish immutable prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          short=$(printf '%s' "$GITHUB_SHA" | cut -c1-12)
+          tag="reddit-android-$short"
+          gh release create "$tag" \
+            release/reddit-phone.tar.gz \
+            release/reddit-tablet.tar.gz \
+            release/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Reddit Android $short" \
+            --notes "Direct DEX launcher plus JNI bundles for Cat Food phone and tablet targets."

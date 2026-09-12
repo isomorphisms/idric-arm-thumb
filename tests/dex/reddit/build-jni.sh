@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
-output=${1:-"$repo_root/build/exec/wegert/libwegert.so"}
-api=${ANDROID_API:-29}
+output=${1:-"$repo_root/build/exec/reddit/libreddit_cli.so"}
+api=${ANDROID_API:-24}
 abi=${ANDROID_ABI:-x86_64}
 
 case "$abi" in
@@ -45,12 +45,13 @@ readelf="$ndk_bin/llvm-readelf"
 }
 
 mkdir -p "$(dirname -- "$output")"
-"$clang" -shared -fPIC -O2 -Wl,--no-undefined -Wl,-soname,libwegert.so \
-  "$repo_root/tests/dex/wegert/wegert_probe.c" -llog -landroid -o "$output"
+"$clang" -shared -fPIC -O2 -Wall -Wextra -Werror \
+  -Wl,--no-undefined -Wl,-soname,libreddit_cli.so \
+  "$repo_root/tests/dex/reddit/reddit_cli.c" -o "$output"
 
 # Finish readelf before grep -q can close a pipe and make LLVM exit 74.
 # Keep readelf failure fatal even when its partial output contains a match.
 symbols=$("$readelf" -Ws "$output")
-grep -Fq 'Java_org_isomorphisms_wegert_WegertActivity_jniProbe' <<<"$symbols"
-grep -Fq 'ANativeActivity_onCreate' <<<"$symbols"
-printf 'JNI ABI                 %s\n' "$abi"
+grep -Fq 'Java_org_isomorphisms_reddit_RedditCli_run' <<<"$symbols"
+printf 'Reddit JNI ABI          %s\n' "$abi"
+printf 'Reddit JNI API          %s\n' "$api"

@@ -64,6 +64,9 @@ jobs:
           java -version
           python3 --version
 
+      - name: Test JNI build-script boundary (mock NDK only)
+        run: python3 tests/dex/jni-build-boundary-test.py
+
       - name: Run current-head compiler and DEX acceptance
         env:
           IDRIC_REPO: ${{ github.workspace }}/Idric
@@ -149,13 +152,7 @@ jobs:
           profile: Nexus 6
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -camera-back none -camera-front none -memory 1024 -cores 2 -gpu swiftshader_indirect
-          script: |
-            DEX_PROVENANCE_REQUIRED=1 \
-              DEX_DEVICE_RECEIPT=build/exec/dex-emulator-receipt.txt \
-              SMALI_JAR="$GITHUB_WORKSPACE/build/oracles/smali-3.0.10.jar" \
-              tests/dex/device-acceptance.sh build/exec/classes.dex
-            WEGERT_ART_RECEIPT=build/exec/wegert/emulator-receipt.txt \
-              tests/dex/wegert/art-acceptance.sh build/exec/wegert/wegert-test.apk
+          script: bash tests/dex/emulator-sanity.sh
 
       - name: Retain emulator sanity evidence
         if: always()
