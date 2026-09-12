@@ -17,6 +17,14 @@ The oracle models a 4-pixel-wide RGB565 surface whose logical rows occupy 8 byte
 
 `check.sh` assembles/links the oracle as a static ARMv7 Thumb executable and runs it under `qemu-arm`. A nonzero exit status identifies the failed assertion.
 
+## Linux fbdev whole-screen sample
+
+`linux_fbdev_red.S` is a second handwritten Thumb-2 reference program, this time showing the complete syscall-level shape of a tiny display program. It uses no libc or Bionic calls: it tries `/dev/graphics/fb0` and `/dev/fb0`, obtains framebuffer geometry with `ioctl`, maps the framebuffer with `mmap2`, constructs red from the reported pixel bitfield, fills the visible 16- or 32-bit image, waits three seconds, and exits.
+
+The build gate assembles and links this sample but deliberately does **not** execute it under user-mode QEMU. Execution requires a kernel exposing a real fbdev device plus suitable permissions; user-mode QEMU does not supply that device boundary. A modern Android device may also use SurfaceFlinger/HWC rather than an fbdev scanout path, so a successful syscall sequence is not by itself evidence that the physical screen presented the pixels.
+
+This file is an implementation/reference target, not compiler acceptance. The eventual source-level Idriç program should say what is wanted—show the selected display red—while fbdev, DRM/KMS, Android native windows, or another platform adapter supplies the mechanism below it.
+
 ## Next compiler-generated gate
 
 The current backend only has the Float32 renderer seam, so the next implementation step is to add the smallest integer/pointer/store representation needed for a source-level RGB565 fixture. At that point the generated-code tests should require:
