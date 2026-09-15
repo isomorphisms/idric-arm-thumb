@@ -51,7 +51,17 @@ jobs:
             bash build-essential ca-certificates chezscheme curl \
             default-jre-headless file libgmp-dev libssl-dev python3
 
+      - name: Restore exact compiler toolchain
+        id: compiler-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            Idric/_/build
+            ~/.idris2
+          key: idric-${{ runner.os }}-24.04-${{ env.IDRIC_COMPILER_REF }}
+
       - name: Build exact compiler and install compiler API
+        if: steps.compiler-cache.outputs.cache-hit != 'true'
         run: |
           Idric/_/edric bootstrap
           compiler="$GITHUB_WORKSPACE/Idric/_/build/exec/idris2"
@@ -59,6 +69,12 @@ jobs:
           make -C Idric/_/support/chez install IDRIS2_VERSION=0.8.0
           make -C Idric/_ install-bootstrap-libs IDRIS2="$compiler"
           make -C Idric/_ install-api IDRIS2_BOOT="$compiler"
+
+      - name: Verify exact compiler
+        run: |
+          compiler="$GITHUB_WORKSPACE/Idric/_/build/exec/idris2"
+          test -x "$compiler"
+          "$compiler" --version
 
       - name: Install exact Idric-Net package
         run: |
@@ -75,7 +91,6 @@ jobs:
 
       - name: Compile exact ICU checked command path to direct DEX
         run: |
-          compiler="$GITHUB_WORKSPACE/Idric/_/build/exec/idris2"
           cp tests/dex/icu/IcuDexEntry.idric fixture/icu/src/IcuDexEntry.idric
           mkdir -p fixture/icu/build/exec
           (
