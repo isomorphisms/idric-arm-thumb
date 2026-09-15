@@ -1,0 +1,7 @@
+module IcuDexEntry
+
+import Main
+
+%export "dex:icu_main"
+icu_main : IO ()
+icu_main = Main.main
