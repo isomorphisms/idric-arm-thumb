@@ -93,6 +93,7 @@ jobs:
           name: icu-direct-dex-checked-slice
           path: |
             fixture/icu/build/exec/icu-classes.dex
+            fixture/icu/build/exec/icu-classes.compiler.anf
             fixture/icu/build/exec/icu-classes.checked.anf
             fixture/icu/build/exec/icu-classes.dex.plan
             fixture/icu/build/exec/icu-classes.smali
