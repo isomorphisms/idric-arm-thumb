@@ -68,6 +68,17 @@ padding offset alignment =
   replicate (cast (align_up offset alignment - offset)) 0
 
 private
+move_width : Register -> Register -> Either String Int
+move_width destination source =
+  if not (valid_register 65535 destination && valid_register 65535 source)
+    then Left "DEX move register exceeds v65535"
+    else if valid_register 15 destination && valid_register 15 source
+      then Right 1
+      else if valid_register 255 destination
+        then Right 2
+        else Right 3
+
+private
 instruction_width : Instruction -> Either String Int
 instruction_width (Mark label) = Right 0
 instruction_width (IntegerConstant destination value) =
@@ -80,14 +91,12 @@ instruction_width (IntegerConstant destination value) =
         else if value >= -32768 && value <= 32767
           then Right 2
           else Right 3
-instruction_width (Move destination source) =
-  if not (valid_register 65535 destination && valid_register 65535 source)
-    then Left ("DEX move register exceeds v65535")
-    else if valid_register 15 destination && valid_register 15 source
-      then Right 1
-      else if valid_register 255 destination
-        then Right 2
-        else Right 3
+instruction_width (TextConstant destination value) =
+  if valid_register 255 destination
+    then Right 2
+    else Left "DEX const-string requires a destination in v0..v255"
+instruction_width (Move destination source) = move_width destination source
+instruction_width (MoveObject destination source) = move_width destination source
 instruction_width (IntegerBinary _ destination left right) =
   if valid_register 255 destination &&
      valid_register 255 left && valid_register 255 right
@@ -102,6 +111,10 @@ instruction_width (ReturnInteger register) =
   if valid_register 255 register
     then Right 1
     else Left "DEX return requires a register in v0..v255"
+instruction_width (ReturnObject register) =
+  if valid_register 255 register
+    then Right 1
+    else Left "DEX return-object requires a register in v0..v255"
 
 private
 find_label : Label -> List (Label, Int) -> Either String Int
@@ -142,10 +155,39 @@ branch_opcode GreaterThanInteger = 0x36
 branch_opcode LessEqualInteger = 0x37
 
 private
+lookup_index : Eq value => String -> value -> List value -> Either String Int
+lookup_index role requested values = find_from 0 values
+  where
+    find_from : Int -> List value -> Either String Int
+    find_from index [] = Left ("Missing " ++ role ++ " index")
+    find_from index (candidate :: rest) =
+      if requested == candidate then Right index else find_from (index + 1) rest
+
+private
+encode_move : Integer -> Integer -> Integer -> Register -> Register -> Either String (List Int)
+encode_move narrow_opcode from16_opcode wide_opcode destination source = do
+  width <- move_width destination source
+  let destination_number : Integer = cast destination.number
+  let source_number : Integer = cast source.number
+  case width of
+    1 =>
+      Right
+        (u16le
+          (narrow_opcode + destination_number * 256 + source_number * 4096))
+    2 =>
+      Right
+        (u16le (from16_opcode + destination_number * 256) ++
+         u16le source_number)
+    _ =>
+      Right
+        (u16le wide_opcode ++ u16le destination_number ++ u16le source_number)
+
+private
 encode_instruction :
-  List (Label, Int) -> Int -> Instruction -> Either String (List Int)
-encode_instruction labels address (Mark label) = Right []
-encode_instruction labels address instruction@(IntegerConstant destination value) = do
+  List String -> List (Label, Int) -> Int -> Instruction ->
+  Either String (List Int)
+encode_instruction strings labels address (Mark label) = Right []
+encode_instruction strings labels address instruction@(IntegerConstant destination value) = do
   width <- instruction_width instruction
   let register = cast destination.number
   let literal : Integer = cast value
@@ -156,23 +198,25 @@ encode_instruction labels address instruction@(IntegerConstant destination value
           (0x12 + register * 256 + unsigned_mod literal 16 * 4096))
     2 => Right (u16le (0x13 + register * 256) ++ u16le literal)
     _ => Right (u16le (0x14 + register * 256) ++ u32le literal)
-encode_instruction labels address instruction@(Move destination source) = do
-  width <- instruction_width instruction
-  let destination_number : Integer = cast destination.number
-  let source_number : Integer = cast source.number
-  case width of
-    1 =>
+encode_instruction strings labels address instruction@(TextConstant destination value) = do
+  _ <- instruction_width instruction
+  string_index <- lookup_index "const-string" value strings
+  if string_index > 65535
+    then Left "DEX const-string/jumbo is not implemented in the checked Text slice"
+    else
       Right
-        (u16le (0x01 + destination_number * 256 + source_number * 4096))
-    2 =>
-      Right (u16le (0x02 + destination_number * 256) ++ u16le source_number)
-    _ => Right (u16le 0x03 ++ u16le destination_number ++ u16le source_number)
-encode_instruction labels address instruction@(IntegerBinary operation destination left right) = do
+        (u16le (0x1a + cast destination.number * 256) ++
+         u16le (cast string_index))
+encode_instruction strings labels address (Move destination source) =
+  encode_move 0x01 0x02 0x03 destination source
+encode_instruction strings labels address (MoveObject destination source) =
+  encode_move 0x07 0x08 0x09 destination source
+encode_instruction strings labels address instruction@(IntegerBinary operation destination left right) = do
   _ <- instruction_width instruction
   Right
     (u16le (binary_opcode operation + cast destination.number * 256) ++
      u16le (cast left.number + cast right.number * 256))
-encode_instruction labels address instruction@(IntegerBranch condition left right target) = do
+encode_instruction strings labels address instruction@(IntegerBranch condition left right target) = do
   _ <- instruction_width instruction
   target_address <- find_label target labels
   let offset = target_address - address
@@ -187,7 +231,7 @@ encode_instruction labels address instruction@(IntegerBranch condition left righ
           (branch_opcode condition + cast left.number * 256 +
            cast right.number * 4096) ++
          u16le (cast offset))
-encode_instruction labels address instruction@(Goto target) = do
+encode_instruction strings labels address instruction@(Goto target) = do
   _ <- instruction_width instruction
   target_address <- find_label target labels
   let offset = target_address - address
@@ -197,25 +241,81 @@ encode_instruction labels address instruction@(Goto target) = do
         ("First DEX goto format 10t offset is zero or out of range at code unit " ++
          show address ++ ": " ++ show offset)
     else Right (u16le (0x28 + unsigned_mod (cast offset) 256 * 256))
-encode_instruction labels address instruction@(ReturnInteger register) = do
+encode_instruction strings labels address instruction@(ReturnInteger register) = do
   _ <- instruction_width instruction
   Right (u16le (0x0f + cast register.number * 256))
+encode_instruction strings labels address instruction@(ReturnObject register) = do
+  _ <- instruction_width instruction
+  Right (u16le (0x11 + cast register.number * 256))
 
 private
 encode_instruction_stream :
-  List (Label, Int) -> Int -> List Instruction -> Either String (List Int)
-encode_instruction_stream labels address [] = Right []
-encode_instruction_stream labels address (instruction :: rest) = do
-  encoded <- encode_instruction labels address instruction
+  List String -> List (Label, Int) -> Int -> List Instruction ->
+  Either String (List Int)
+encode_instruction_stream strings labels address [] = Right []
+encode_instruction_stream strings labels address (instruction :: rest) = do
+  encoded <- encode_instruction strings labels address instruction
   width <- instruction_width instruction
-  more <- encode_instruction_stream labels (address + width) rest
+  more <- encode_instruction_stream strings labels (address + width) rest
   Right (encoded ++ more)
 
 private
-encode_instructions : List Instruction -> Either String (List Int)
-encode_instructions instructions = do
+encode_instructions : List String -> List Instruction -> Either String (List Int)
+encode_instructions strings instructions = do
   labels <- label_addresses instructions
-  encode_instruction_stream labels 0 instructions
+  encode_instruction_stream strings labels 0 instructions
+
+private
+record Prototype where
+  constructor MkPrototype
+  parameter_types : List ValueType
+  result_type : ValueType
+
+private
+Eq Prototype where
+  left == right =
+    left.parameter_types == right.parameter_types &&
+    left.result_type == right.result_type
+
+private
+prototype_of : MethodPlan -> Prototype
+prototype_of method = MkPrototype method.parameter_types method.result_type
+
+private
+compare_descriptors : List String -> List String -> Ordering
+compare_descriptors [] [] = EQ
+compare_descriptors [] (_ :: _) = LT
+compare_descriptors (_ :: _) [] = GT
+compare_descriptors (left :: left_rest) (right :: right_rest) =
+  case compare left right of
+    EQ => compare_descriptors left_rest right_rest
+    ordering => ordering
+
+private
+compare_prototype : Prototype -> Prototype -> Ordering
+compare_prototype left right =
+  case compare
+    (value_descriptor left.result_type)
+    (value_descriptor right.result_type) of
+      EQ =>
+        compare_descriptors
+          (map value_descriptor left.parameter_types)
+          (map value_descriptor right.parameter_types)
+      ordering => ordering
+
+private
+insert_prototype : Prototype -> List Prototype -> List Prototype
+insert_prototype prototype [] = [prototype]
+insert_prototype prototype (candidate :: rest) =
+  case compare_prototype prototype candidate of
+    LT => prototype :: candidate :: rest
+    EQ => candidate :: rest
+    GT => candidate :: insert_prototype prototype rest
+
+private
+unique_prototypes : List MethodPlan -> List Prototype
+unique_prototypes methods =
+  foldr (\method, values => insert_prototype (prototype_of method) values) [] methods
 
 private
 method_before : MethodPlan -> MethodPlan -> Bool
@@ -223,7 +323,7 @@ method_before left right =
   case compare left.method_name right.method_name of
     LT => True
     GT => False
-    EQ => left.parameter_count <= right.parameter_count
+    EQ => compare_prototype (prototype_of left) (prototype_of right) /= GT
 
 private
 insert_method : MethodPlan -> List MethodPlan -> List MethodPlan
@@ -244,9 +344,8 @@ find_duplicate_method (method :: rest) =
   if any
        (\candidate =>
          candidate.method_name == method.method_name &&
-         candidate.parameter_count == method.parameter_count) rest
-    then Just
-      (method.method_name ++ "/" ++ show method.parameter_count)
+         prototype_of candidate == prototype_of method) rest
+    then Just method.method_name
     else find_duplicate_method rest
 
 private
@@ -259,81 +358,109 @@ ascii_bytes value = traverse encode_character (unpack value)
       in if code >= 1 && code <= 127
            then Right code
            else Left
-             ("First DEX encoder accepts non-NUL ASCII metadata only: " ++
+             ("Checked DEX metadata/Text constants currently admit non-NUL ASCII only: " ++
               show character)
 
 private
-shorty : Int -> String
-shorty parameter_count =
-  "I" ++ pack (replicate (cast parameter_count) 'I')
+shorty : Prototype -> String
+shorty prototype =
+  pack
+    (shorty_character prototype.result_type ::
+     map shorty_character prototype.parameter_types)
 
 private
-lookup_index : Eq value => String -> value -> List value -> Either String Int
-lookup_index role requested values = find_from 0 values
-  where
-    find_from : Int -> List value -> Either String Int
-    find_from index [] = Left ("Missing " ++ role ++ " index")
-    find_from index (candidate :: rest) =
-      if requested == candidate then Right index else find_from (index + 1) rest
+instruction_texts : Instruction -> List String
+instruction_texts (TextConstant destination value) = [value]
+instruction_texts instruction = []
 
 private
-unique_arities : List MethodPlan -> List Int
-unique_arities methods = sort (nub (map parameter_count methods))
+method_texts : MethodPlan -> List String
+method_texts method = concat (map instruction_texts method.instructions)
 
 private
-all_strings : String -> List MethodPlan -> List Int -> List String
-all_strings descriptor methods arities =
+type_descriptors : String -> List MethodPlan -> List String
+type_descriptors class_descriptor methods =
   sort
     (nub
-      (["I", descriptor, "Ljava/lang/Object;"] ++
-       map method_name methods ++ map shorty arities))
+      ([class_descriptor, "Ljava/lang/Object;"] ++
+       concat
+         (map
+           (\method =>
+             value_descriptor method.result_type ::
+             map value_descriptor method.parameter_types)
+           methods)))
+
+private
+all_strings :
+  String -> List MethodPlan -> List Prototype -> List String -> List String
+all_strings descriptor methods prototypes descriptors =
+  sort
+    (nub
+      (descriptors ++
+       map method_name methods ++
+       map shorty prototypes ++
+       concat (map method_texts methods)))
 
 private
 record TypeListLayout where
   constructor MkTypeListLayout
   bytes : List Int
-  offsets : List (Int, Int)
+  offsets : List (Prototype, Int)
   first_offset : Maybe Int
   next_offset : Int
   item_count : Int
 
 private
+encode_parameter_types :
+  List String -> List ValueType -> Either String (List Int)
+encode_parameter_types descriptors [] = Right []
+encode_parameter_types descriptors (value_type :: rest) = do
+  type_index <-
+    lookup_index "parameter type" (value_descriptor value_type) descriptors
+  more <- encode_parameter_types descriptors rest
+  Right (u16le (cast type_index) ++ more)
+
+private
 layout_type_lists_from :
-  Int -> Int -> List Int -> List Int -> List (Int, Int) -> Maybe Int -> Int ->
-  TypeListLayout
-layout_type_lists_from int_type_index current [] accumulated offsets first count =
-  MkTypeListLayout accumulated offsets first current count
-layout_type_lists_from int_type_index current (arity :: rest)
+  List String -> Int -> List Prototype -> List Int ->
+  List (Prototype, Int) -> Maybe Int -> Int -> Either String TypeListLayout
+layout_type_lists_from descriptors current [] accumulated offsets first count =
+  Right (MkTypeListLayout accumulated offsets first current count)
+layout_type_lists_from descriptors current (prototype :: rest)
                        accumulated offsets first count =
-  if arity == 0
+  if null prototype.parameter_types
     then
-      layout_type_lists_from int_type_index current rest accumulated
-        ((arity, 0) :: offsets) first count
-    else
+      layout_type_lists_from descriptors current rest accumulated
+        ((prototype, 0) :: offsets) first count
+    else do
+      encoded_types <- encode_parameter_types descriptors prototype.parameter_types
       let start = align_up current 4
-          pad = padding current 4
-          item =
-            u32le (cast arity) ++
-            concat (replicate (cast arity) (u16le (cast int_type_index)))
-          next = start + cast (length item)
-          next_first =
+      let pad = padding current 4
+      let item =
+            u32le (cast (length prototype.parameter_types)) ++ encoded_types
+      let next = start + cast (length item)
+      let next_first =
             case first of
               Nothing => Just start
               Just existing => Just existing
-      in layout_type_lists_from int_type_index next rest
-           (accumulated ++ pad ++ item) ((arity, start) :: offsets)
-           next_first (count + 1)
+      layout_type_lists_from descriptors next rest
+        (accumulated ++ pad ++ item) ((prototype, start) :: offsets)
+        next_first (count + 1)
 
 private
-layout_type_lists : Int -> Int -> List Int -> TypeListLayout
-layout_type_lists int_type_index start arities =
-  layout_type_lists_from int_type_index start arities [] [] Nothing 0
+layout_type_lists :
+  List String -> Int -> List Prototype -> Either String TypeListLayout
+layout_type_lists descriptors start prototypes =
+  layout_type_lists_from descriptors start prototypes [] [] Nothing 0
 
 private
-find_arity_offset : Int -> List (Int, Int) -> Either String Int
-find_arity_offset requested [] = Left "Missing DEX prototype parameter list"
-find_arity_offset requested ((arity, offset) :: rest) =
-  if requested == arity then Right offset else find_arity_offset requested rest
+find_prototype_offset :
+  Prototype -> List (Prototype, Int) -> Either String Int
+find_prototype_offset requested [] = Left "Missing DEX prototype parameter list"
+find_prototype_offset requested ((prototype, offset) :: rest) =
+  if requested == prototype
+    then Right offset
+    else find_prototype_offset requested rest
 
 private
 record PreparedMethod where
@@ -347,17 +474,19 @@ record PreparedMethod where
 
 private
 prepare_methods :
-  List Int -> Int -> List MethodPlan -> Either String (List PreparedMethod)
-prepare_methods arities next_index [] = Right []
-prepare_methods arities next_index (method :: rest) = do
+  List String -> List Prototype -> Int -> List MethodPlan ->
+  Either String (List PreparedMethod)
+prepare_methods strings prototypes next_index [] = Right []
+prepare_methods strings prototypes next_index (method :: rest) = do
   if method.parameter_count < 0 ||
+     method.parameter_count /= cast (length method.parameter_types) ||
      method.register_count < method.parameter_count ||
      method.register_count > 65535
     then Left ("Invalid DEX register/parameter counts for " ++ method.method_name)
     else Right ()
-  prototype_index <- lookup_index "prototype" method.parameter_count arities
-  bytes <- encode_instructions method.instructions
-  more <- prepare_methods arities (next_index + 1) rest
+  prototype_index <- lookup_index "prototype" (prototype_of method) prototypes
+  bytes <- encode_instructions strings method.instructions
+  more <- prepare_methods strings prototypes (next_index + 1) rest
   Right
     (MkPreparedMethod method next_index prototype_index bytes
       (cast (length bytes) `div` 2) 0 :: more)
@@ -475,6 +604,19 @@ validate_class_descriptor descriptor =
         _ => Left ("Invalid DEX class descriptor `" ++ descriptor ++ "`")
     _ => Left ("Invalid DEX class descriptor `" ++ descriptor ++ "`")
 
+private
+prototype_bytes :
+  List String -> List String -> TypeListLayout -> Prototype ->
+  Either String (List Int)
+prototype_bytes strings descriptors type_lists prototype = do
+  shorty_index <- lookup_index "shorty" (shorty prototype) strings
+  return_type_index <-
+    lookup_index "return type" (value_descriptor prototype.result_type) descriptors
+  parameters_off <- find_prototype_offset prototype type_lists.offsets
+  Right
+    (u32le (cast shorty_index) ++ u32le (cast return_type_index) ++
+     u32le (cast parameters_off))
+
 ||| Encode a deliberately small but structurally complete DEX 035 file.
 ||| The result owns its header, identifiers, class/method/code/data items,
 ||| map, SHA-1 signature, and Adler-32 checksum directly.
@@ -489,23 +631,21 @@ encode_dex file_plan = do
   case find_duplicate_method methods of
     Just duplicate => Left ("Duplicate DEX method signature " ++ duplicate)
     Nothing => Right ()
-  let arities = unique_arities methods
-  let strings = all_strings file_plan.class_descriptor methods arities
+  let prototypes = unique_prototypes methods
+  let descriptors = type_descriptors file_plan.class_descriptor methods
+  let strings = all_strings file_plan.class_descriptor methods prototypes descriptors
   let string_ids_off = 112
   let type_ids_off = string_ids_off + 4 * cast (length strings)
-  let proto_ids_off = type_ids_off + 12
-  let method_ids_off = proto_ids_off + 12 * cast (length arities)
+  let proto_ids_off = type_ids_off + 4 * cast (length descriptors)
+  let method_ids_off = proto_ids_off + 12 * cast (length prototypes)
   let class_defs_off = method_ids_off + 8 * cast (length methods)
   let data_off = class_defs_off + 32
-  int_string_index <- lookup_index "Int32 descriptor" "I" strings
-  class_string_index <- lookup_index "generated class descriptor" file_plan.class_descriptor strings
-  object_string_index <- lookup_index "Object descriptor" "Ljava/lang/Object;" strings
-  let type_descriptor_indices = sort [int_string_index, class_string_index, object_string_index]
-  int_type_index <- lookup_index "Int32 type" int_string_index type_descriptor_indices
-  class_type_index <- lookup_index "generated class type" class_string_index type_descriptor_indices
-  object_type_index <- lookup_index "Object type" object_string_index type_descriptor_indices
-  let type_lists = layout_type_lists int_type_index data_off arities
-  prepared <- prepare_methods arities 0 methods
+  class_type_index <-
+    lookup_index "generated class type" file_plan.class_descriptor descriptors
+  object_type_index <-
+    lookup_index "Object type" "Ljava/lang/Object;" descriptors
+  type_lists <- layout_type_lists descriptors data_off prototypes
+  prepared <- prepare_methods strings prototypes 0 methods
   let code = layout_code type_lists.next_offset prepared
   strings_layout <- layout_strings code.next_offset strings
   let class_data_bytes = class_data code.methods
@@ -520,14 +660,12 @@ encode_dex file_plan = do
     traverse
       (\value => do offset <- find_string_offset value strings_layout.offsets
                     Right (u32le (cast offset))) strings
-  let type_id_bytes = map (\index => u32le (cast index)) type_descriptor_indices
-  proto_id_bytes <-
+  type_id_bytes <-
     traverse
-      (\arity => do shorty_index <- lookup_index "shorty" (shorty arity) strings
-                    parameters_off <- find_arity_offset arity type_lists.offsets
-                    Right
-                      (u32le (cast shorty_index) ++ u32le (cast int_type_index) ++
-                       u32le (cast parameters_off))) arities
+      (\descriptor => do index <- lookup_index "type descriptor" descriptor strings
+                         Right (u32le (cast index))) descriptors
+  proto_id_bytes <-
+    traverse (prototype_bytes strings descriptors type_lists) prototypes
   method_id_bytes <-
     traverse
       (\method => do name_index <- lookup_index "method name" method.plan.method_name strings
@@ -542,8 +680,8 @@ encode_dex file_plan = do
   let map_entries_before_optional =
         [ map_item 0x0000 1 0
         , map_item 0x0001 (cast (length strings)) string_ids_off
-        , map_item 0x0002 3 type_ids_off
-        , map_item 0x0003 (cast (length arities)) proto_ids_off
+        , map_item 0x0002 (cast (length descriptors)) type_ids_off
+        , map_item 0x0003 (cast (length prototypes)) proto_ids_off
         , map_item 0x0005 (cast (length methods)) method_ids_off
         , map_item 0x0006 1 class_defs_off
         ]
@@ -565,8 +703,8 @@ encode_dex file_plan = do
         u32le (cast file_size) ++ u32le 112 ++ u32le 0x12345678 ++
         u32le 0 ++ u32le 0 ++ u32le (cast map_off) ++
         u32le (cast (length strings)) ++ u32le (cast string_ids_off) ++
-        u32le 3 ++ u32le (cast type_ids_off) ++
-        u32le (cast (length arities)) ++ u32le (cast proto_ids_off) ++
+        u32le (cast (length descriptors)) ++ u32le (cast type_ids_off) ++
+        u32le (cast (length prototypes)) ++ u32le (cast proto_ids_off) ++
         u32le 0 ++ u32le 0 ++
         u32le (cast (length methods)) ++ u32le (cast method_ids_off) ++
         u32le 1 ++ u32le (cast class_defs_off) ++

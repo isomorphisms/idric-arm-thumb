@@ -1,0 +1,11 @@
+module DexText
+
+%default total
+
+%export "dex:echo_text"
+echo_text : String -> String
+echo_text text = text
+
+%export "dex:icu_word"
+icu_word : String
+icu_word = "icu"

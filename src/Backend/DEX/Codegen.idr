@@ -25,17 +25,20 @@ record ExportABI where
   constructor MkExportABI
   internal_name : Name
   method_name : String
-  parameter_count : Int
+  parameter_types : List ValueType
+  result_type : ValueType
 
 private
-classify_int32 : Term variables -> Either String ()
-classify_int32 (PrimVal _ (PrT Int32Type)) = Right ()
-classify_int32 (PrimVal _ (PrT primitive_type)) =
+classify_value_type : Term variables -> Either String ValueType
+classify_value_type (PrimVal _ (PrT Int32Type)) = Right IntegerValue
+classify_value_type (PrimVal _ (PrT StringType)) = Right TextValue
+classify_value_type (PrimVal _ (PrT primitive_type)) =
   Left ("unsupported source primitive type `" ++ show primitive_type ++ "`")
-classify_int32 type = Left "unsupported source type"
+classify_value_type type = Left "unsupported source type"
 
 private
-parse_source_signature : Term variables -> Either String Int
+parse_source_signature :
+  Term variables -> Either String (List ValueType, ValueType)
 parse_source_signature
   (Bind _ argument_name (Pi _ multiplicity Explicit argument_type) scope) = do
     if isErased multiplicity
@@ -44,16 +47,16 @@ parse_source_signature
           ("erased argument `" ++ show argument_name ++
            "` cannot be a DEX method parameter")
       else do
-        classify_int32 argument_type
-        remaining <- parse_source_signature scope
-        Right (remaining + 1)
+        argument_value_type <- classify_value_type argument_type
+        (remaining, result_type) <- parse_source_signature scope
+        Right (argument_value_type :: remaining, result_type)
 parse_source_signature (Bind _ argument_name (Pi _ _ _ argument_type) scope) =
   Left
     ("implicit argument `" ++ show argument_name ++
      "` is not supported at the DEX method boundary")
 parse_source_signature result_type = do
-  classify_int32 result_type
-  Right 0
+  value_type <- classify_value_type result_type
+  Right ([], value_type)
 
 private
 resolve_export_abi :
@@ -76,12 +79,13 @@ resolve_export_abi (internal_name, method_name) = do
         (UserError
           ("dex rejected source ABI for `" ++ show internal_name ++
            "`: " ++ explanation ++
-           ". The first executable boundary admits explicit Int32 " ++
-           "parameters and an Int32 result only."))
-    Right parameter_count =>
+           ". The checked executable boundary currently admits explicit " ++
+           "Int32 and Text parameters/results only."))
+    Right (parameter_types, result_type) =>
       case validate_method_name method_name of
         Left explanation => throw (UserError explanation)
-        Right accepted => pure (MkExportABI internal_name accepted parameter_count)
+        Right accepted =>
+          pure (MkExportABI internal_name accepted parameter_types result_type)
 
 private
 lookup_anf_definition :
@@ -103,7 +107,7 @@ validate_exports : List ExportABI -> Either String ()
 validate_exports [] =
   Left
     ("No functions selected. Add %export \"dex:<method_name>\" to an " ++
-     "Int32 function.")
+     "Int32/Text function.")
 validate_exports exports =
   case find_duplicate_name (map method_name exports) of
     Nothing => Right ()
@@ -126,12 +130,13 @@ lower_exports integer_less_name (selected :: rest) definitions = do
       Just found => Right found
   method <-
     lower_method integer_less_name
-      (show selected.internal_name) selected.method_name definition
-  if method.parameter_count /= selected.parameter_count
+      (show selected.internal_name) selected.method_name
+      selected.parameter_types selected.result_type definition
+  if method.parameter_count /= cast (length selected.parameter_types)
     then
       Left
         ("Internal DEX ABI mismatch for `" ++ show selected.internal_name ++
-         "`: source type has " ++ show selected.parameter_count ++
+         "`: source type has " ++ show (length selected.parameter_types) ++
          " parameters, ANF has " ++ show method.parameter_count)
     else Right ()
   more <- lower_exports integer_less_name rest definitions

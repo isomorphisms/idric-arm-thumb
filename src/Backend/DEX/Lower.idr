@@ -13,6 +13,7 @@ record LowerState where
   constructor MkLowerState
   integer_less_name : Name
   registers : List (Int, Register)
+  value_types : List (Int, ValueType)
   result_register : Register
   next_label : Int
   instructions_reversed : List Instruction
@@ -40,6 +41,25 @@ lookup_register role variable state =
       if requested == candidate
         then Just register
         else find_register requested rest
+
+private
+lookup_value_type : String -> Int -> LowerState -> Either String ValueType
+lookup_value_type role variable state =
+  case find_type variable state.value_types of
+    Nothing => Left (role ++ " has no checked DEX value type for ANF local v" ++ show variable)
+    Just value_type => Right value_type
+  where
+    find_type : Int -> List (Int, ValueType) -> Maybe ValueType
+    find_type requested [] = Nothing
+    find_type requested ((candidate, value_type) :: rest) =
+      if requested == candidate
+        then Just value_type
+        else find_type requested rest
+
+private
+set_value_type : Int -> ValueType -> LowerState -> LowerState
+set_value_type variable value_type state =
+  { value_types := (variable, value_type) :: state.value_types } state
 
 private
 append_unique : List Int -> Int -> List Int
@@ -99,6 +119,14 @@ number_registers_from next (variable :: rest) =
   (variable, MkRegister next) :: number_registers_from (next + 1) rest
 
 private
+pair_types : List Int -> List ValueType -> Either String (List (Int, ValueType))
+pair_types [] [] = Right []
+pair_types (variable :: variables) (value_type :: value_types) = do
+  rest <- pair_types variables value_types
+  Right ((variable, value_type) :: rest)
+pair_types _ _ = Left "Internal DEX ABI mismatch while assigning parameter types"
+
+private
 integer_condition : PrimFn 2 -> Maybe IntegerCondition
 integer_condition (LT Int32Type) = Just LessThanInteger
 integer_condition (LTE Int32Type) = Just LessEqualInteger
@@ -153,6 +181,11 @@ lower_primitive destination operation arguments state =
        Administrative_Normal_Form_Local_Variable right_variable]) => do
       left <- lookup_register "Int32 primitive left operand" left_variable state
       right <- lookup_register "Int32 primitive right operand" right_variable state
+      left_type <- lookup_value_type "Int32 primitive left operand" left_variable state
+      right_type <- lookup_value_type "Int32 primitive right operand" right_variable state
+      if left_type /= IntegerValue || right_type /= IntegerValue
+        then Left "DEX Int32 primitive received a non-Int32 checked operand"
+        else Right ()
       case integer_binary binary of
         Just accepted =>
           Right (emit (IntegerBinary accepted destination left right) state)
@@ -169,29 +202,71 @@ lower_primitive destination operation arguments state =
         ("DEX Int32 primitive operands must be two ANF locals, got " ++
          show operation)
 
+private
+infer_value_type : Administrative_Normal_Form -> LowerState -> Either String ValueType
+infer_value_type
+  (Administrative_Normal_Form_Variable_Expression _
+    (Administrative_Normal_Form_Local_Variable source_variable)) state =
+  lookup_value_type "Value" source_variable state
+infer_value_type (Administrative_Normal_Form_Primitive_Value _ (I32 _)) state =
+  Right IntegerValue
+infer_value_type (Administrative_Normal_Form_Primitive_Value _ (Str _)) state =
+  Right TextValue
+infer_value_type
+  (Administrative_Normal_Form_Primitive_Operation _ _ operation arguments) state =
+  case integer_binary operation of
+    Just _ => Right IntegerValue
+    Nothing =>
+      case integer_condition operation of
+        Just _ => Right IntegerValue
+        Nothing => Left ("Cannot infer DEX value type for primitive " ++ show operation)
+infer_value_type
+  (Administrative_Normal_Form_Named_Function_Application _ _ name _) state =
+  if is_checked_int32_less name state.integer_less_name
+    then Right IntegerValue
+    else Left ("Cannot infer DEX value type for checked call " ++ show name)
+infer_value_type expression state =
+  Left ("Cannot infer DEX value type for checked ANF: " ++ show expression)
+
 mutual
   private
   lower_to :
-    Register -> Administrative_Normal_Form -> LowerState -> Either String LowerState
-  lower_to destination
+    Register -> ValueType -> Administrative_Normal_Form -> LowerState ->
+    Either String LowerState
+  lower_to destination destination_type
     (Administrative_Normal_Form_Variable_Expression _
       (Administrative_Normal_Form_Local_Variable source_variable)) state = do
     source <- lookup_register "Copy" source_variable state
-    if destination == source
-      then Right state
-      else Right (emit (Move destination source) state)
-  lower_to destination
+    source_type <- lookup_value_type "Copy source" source_variable state
+    if source_type /= destination_type
+      then
+        Left
+          ("DEX copy type mismatch: source is " ++ show source_type ++
+           ", destination is " ++ show destination_type)
+      else if destination == source
+        then Right state
+        else
+          Right
+            (emit
+              (case destination_type of
+                 IntegerValue => Move destination source
+                 TextValue => MoveObject destination source)
+              state)
+  lower_to destination IntegerValue
     (Administrative_Normal_Form_Primitive_Value _ (I32 value)) state =
       Right (emit (IntegerConstant destination (cast value)) state)
-  lower_to destination
+  lower_to destination TextValue
+    (Administrative_Normal_Form_Primitive_Value _ (Str value)) state =
+      Right (emit (TextConstant destination value) state)
+  lower_to destination destination_type
     (Administrative_Normal_Form_Primitive_Value _ (I value)) state =
       Left
-        ("Idriç Int is 64-bit in the current compiler; the first DEX slice " ++
-         "accepts Int32 (got literal " ++ show value ++ ")")
-  lower_to destination
+        ("Idriç Int is 64-bit in the current compiler; the DEX checked slice " ++
+         "accepts Int32 or Text (got literal " ++ show value ++ ")")
+  lower_to destination IntegerValue
     (Administrative_Normal_Form_Primitive_Operation _ _ operation arguments) state =
       lower_primitive destination operation arguments state
-  lower_to destination
+  lower_to destination IntegerValue
     (Administrative_Normal_Form_Named_Function_Application _ _ name
       [Administrative_Normal_Form_Local_Variable left_variable,
        Administrative_Normal_Form_Local_Variable right_variable]) state =
@@ -202,24 +277,28 @@ mutual
           Right (lower_comparison LessThanInteger destination left right state)
         else
           Left
-            ("Unsupported checked named call in DEX Int32 subset: " ++ show name)
-  lower_to destination
+            ("Unsupported checked named call in DEX checked slice: " ++ show name)
+  lower_to destination destination_type
     (Administrative_Normal_Form_Binding _ nested_destination value body) state = do
       target <- lookup_register "Let destination" nested_destination state
-      after_value <- lower_to target value state
-      lower_to destination body after_value
-  lower_to destination
+      nested_type <- infer_value_type value state
+      let typed_state = set_value_type nested_destination nested_type state
+      after_value <- lower_to target nested_type value typed_state
+      lower_to destination destination_type body after_value
+  lower_to destination IntegerValue
     (Administrative_Normal_Form_Constructor_Case _
       (Administrative_Normal_Form_Local_Variable scrutinee)
       alternatives fallback) state =
       lower_boolean_case destination scrutinee alternatives fallback state
-  lower_to destination
+  lower_to destination IntegerValue
     (Administrative_Normal_Form_Constant_Case _
       (Administrative_Normal_Form_Local_Variable scrutinee)
       alternatives fallback) state =
       lower_boolean_constant_case destination scrutinee alternatives fallback state
-  lower_to destination expression state =
-    Left ("Unsupported checked ANF in DEX Int32 subset: " ++ show expression)
+  lower_to destination destination_type expression state =
+    Left
+      ("Unsupported checked ANF for DEX result type " ++ show destination_type ++
+       ": " ++ show expression)
 
   private
   lower_boolean_case :
@@ -228,6 +307,10 @@ mutual
     Maybe Administrative_Normal_Form -> LowerState -> Either String LowerState
   lower_boolean_case destination scrutinee_variable alternatives fallback state = do
     scrutinee <- lookup_register "Boolean case scrutinee" scrutinee_variable state
+    scrutinee_type <- lookup_value_type "Boolean case scrutinee" scrutinee_variable state
+    if scrutinee_type /= IntegerValue
+      then Left "DEX Boolean case scrutinee is not an Int32/Boolean value"
+      else Right ()
     false_body <- find_constructor_tag 0 alternatives fallback
     true_body <- find_constructor_tag 1 alternatives fallback
     let (false_label, after_false_label) = fresh_label state
@@ -235,10 +318,10 @@ mutual
     let with_zero = emit (IntegerConstant destination 0) after_done_label
     let with_branch =
           emit (IntegerBranch EqualInteger scrutinee destination false_label) with_zero
-    after_true <- lower_to destination true_body with_branch
+    after_true <- lower_to destination IntegerValue true_body with_branch
     let with_goto = emit (Goto done_label) after_true
     let at_false = emit (Mark false_label) with_goto
-    after_false <- lower_to destination false_body at_false
+    after_false <- lower_to destination IntegerValue false_body at_false
     Right (emit (Mark done_label) after_false)
 
   private
@@ -248,6 +331,10 @@ mutual
     Maybe Administrative_Normal_Form -> LowerState -> Either String LowerState
   lower_boolean_constant_case destination scrutinee_variable alternatives fallback state = do
     scrutinee <- lookup_register "Boolean case scrutinee" scrutinee_variable state
+    scrutinee_type <- lookup_value_type "Boolean case scrutinee" scrutinee_variable state
+    if scrutinee_type /= IntegerValue
+      then Left "DEX Boolean constant case scrutinee is not Int32"
+      else Right ()
     false_body <- find_constant_tag 0 alternatives fallback
     true_body <- find_constant_tag 1 alternatives fallback
     let (false_label, after_false_label) = fresh_label state
@@ -255,10 +342,10 @@ mutual
     let with_zero = emit (IntegerConstant destination 0) after_done_label
     let with_branch =
           emit (IntegerBranch EqualInteger scrutinee destination false_label) with_zero
-    after_true <- lower_to destination true_body with_branch
+    after_true <- lower_to destination IntegerValue true_body with_branch
     let with_goto = emit (Goto done_label) after_true
     let at_false = emit (Mark false_label) with_goto
-    after_false <- lower_to destination false_body at_false
+    after_false <- lower_to destination IntegerValue false_body at_false
     Right (emit (Mark done_label) after_false)
 
   private
@@ -323,10 +410,15 @@ mutual
 
 private
 finish_method :
-  Administrative_Normal_Form -> LowerState -> Either String (List Instruction)
-finish_method body state = do
-  lowered <- lower_to state.result_register body state
-  Right (reverse (ReturnInteger lowered.result_register :: lowered.instructions_reversed))
+  ValueType -> Administrative_Normal_Form -> LowerState ->
+  Either String (List Instruction)
+finish_method result_type body state = do
+  lowered <- lower_to state.result_register result_type body state
+  let final_instruction =
+        case result_type of
+          IntegerValue => ReturnInteger lowered.result_register
+          TextValue => ReturnObject lowered.result_register
+  Right (reverse (final_instruction :: lowered.instructions_reversed))
 
 private
 is_ascii_letter : Char -> Bool
@@ -355,11 +447,14 @@ validate_method_name name =
 ||| virtual-register placement and target instruction planning.
 public export
 lower_method :
-  Name -> String -> String -> Administrative_Normal_Form_Definition ->
-  Either String MethodPlan
-lower_method integer_less_name source_name requested_method
+  Name -> String -> String -> List ValueType -> ValueType ->
+  Administrative_Normal_Form_Definition -> Either String MethodPlan
+lower_method integer_less_name source_name requested_method parameter_types result_type
   (Make_Administrative_Normal_Form_Function arguments body) = do
   method_name <- validate_method_name requested_method
+  if length arguments /= length parameter_types
+    then Left "Internal DEX ABI mismatch between checked arguments and parameter types"
+    else Right ()
   let discovered = collect_variables body
   let local_variables = filter (\variable => not (elem variable arguments)) discovered
   let local_registers = number_registers_from 0 local_variables
@@ -368,15 +463,16 @@ lower_method integer_less_name source_name requested_method
   let parameter_start = local_count + 1
   let argument_registers = number_registers_from parameter_start arguments
   let mapping = local_registers ++ argument_registers
+  argument_types <- pair_types arguments parameter_types
   let parameter_count : Int = cast (length arguments)
   let register_count = parameter_start + parameter_count
   instructions <-
-    finish_method body
-      (MkLowerState integer_less_name mapping result_register 0 [])
+    finish_method result_type body
+      (MkLowerState integer_less_name mapping argument_types result_register 0 [])
   Right
-    (MkMethodPlan source_name method_name parameter_count
+    (MkMethodPlan source_name method_name parameter_count parameter_types result_type
       register_count instructions)
-lower_method integer_less_name source_name requested_method definition =
+lower_method integer_less_name source_name requested_method parameter_types result_type definition =
   Left
     ("DEX export `" ++ source_name ++ "` is not a checked function: " ++
      show definition)

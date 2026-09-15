@@ -11,6 +11,11 @@ DEX_CHECKED_ANF := build/exec/classes.checked.anf
 DEX_PLAN := build/exec/classes.dex.plan
 DEX_SMALI := build/exec/classes.smali
 DEX_REPEAT_FILE := build/exec/classes-repeat.dex
+DEX_TEXT_SOURCE := examples/DexText.idric
+DEX_TEXT_FILE := build/exec/text.dex
+DEX_TEXT_CHECKED_ANF := build/exec/text.checked.anf
+DEX_TEXT_PLAN := build/exec/text.dex.plan
+DEX_TEXT_SMALI := build/exec/text.smali
 DEX_SELFTEST := build/exec/dex-encoder-selftest
 DEX_INVALID_LOG := build/exec/invalid-dex-int.log
 DEX_INVALID_ARTIFACT := build/exec/invalid-dex-int.dex
@@ -21,14 +26,16 @@ SMALI_JAR := $(DEX_ORACLE_DIR)/smali-3.0.10.jar
 BAKSMALI_SHA256 := 37ae4a41a8886e15c20b8362fa4250f96bbdb55e1a608199ad8b5dff068b588f
 SMALI_SHA256 := 32fa0e88a6c397b3922201adf5f3e534fbaed5a663c71d0c558c3ddce0af844a
 DEX_CANDIDATE_DISASSEMBLY := build/exec/baksmali-candidate/Idric/Generated.smali
+DEX_TEXT_DISASSEMBLY := build/exec/baksmali-text/Idric/Generated.smali
 DEX_ORACLE_FILE := build/exec/oracle-classes.dex
 DEX_ORACLE_DISASSEMBLY := build/exec/baksmali-oracle/Idric/Generated.smali
 DEX_MALFORMED_FILE := build/exec/malformed-magic.dex
 DEX_VALIDATION_RECEIPT := build/exec/dex-validation-receipt.txt
 
-.PHONY: branch-separation check-compiler check driver dex-fixture dex-encoder-selftest \
-	dex-determinism dex-reject dex-header-validation dex-parser-validation \
-	dex-oracle-validation dex-malformed-test dex-test dex-device test verify clean
+.PHONY: branch-separation check-compiler check driver dex-fixture dex-text-fixture \
+	dex-text-validation dex-encoder-selftest dex-determinism dex-reject \
+	dex-header-validation dex-parser-validation dex-oracle-validation \
+	dex-malformed-test dex-test dex-device test verify clean
 
 branch-separation:
 	tests/dex/branch-separation.sh
@@ -66,6 +73,20 @@ dex-fixture: $(DEX_FILE) $(DEX_CHECKED_ANF) $(DEX_PLAN) $(DEX_SMALI)
 	grep -q 'goto' $(DEX_PLAN)
 	grep -q 'const v0, -2147483648' $(DEX_PLAN)
 	grep -q 'const v0, 2147483647' $(DEX_PLAN)
+
+$(DEX_TEXT_FILE) $(DEX_TEXT_CHECKED_ANF) $(DEX_TEXT_PLAN) $(DEX_TEXT_SMALI) &: $(DRIVER) $(DEX_TEXT_SOURCE)
+	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+		./$(DRIVER) --cg dex --source-dir examples $(DEX_TEXT_SOURCE) -o text
+
+dex-text-fixture: $(DEX_TEXT_FILE) $(DEX_TEXT_CHECKED_ANF) $(DEX_TEXT_PLAN) $(DEX_TEXT_SMALI)
+	grep -q '^export DexText.echo_text as echo_text$$' $(DEX_TEXT_CHECKED_ANF)
+	grep -q '^export DexText.icu_word as icu_word$$' $(DEX_TEXT_CHECKED_ANF)
+	grep -q '^method echo_text$$' $(DEX_TEXT_PLAN)
+	grep -q '^parameters: \[Text\]$$' $(DEX_TEXT_PLAN)
+	grep -q '^result: Text$$' $(DEX_TEXT_PLAN)
+	grep -q 'move-object' $(DEX_TEXT_PLAN)
+	grep -q 'const-string' $(DEX_TEXT_PLAN)
+	grep -q 'return-object' $(DEX_TEXT_PLAN)
 
 $(DEX_SELFTEST): $(DRIVER) tests/dex/EncoderSelfTest.idr
 	IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
@@ -136,6 +157,19 @@ dex-parser-validation: dex-header-validation $(DEX_CANDIDATE_DISASSEMBLY)
 	grep -q 'const v0, -0x80000000' $(DEX_CANDIDATE_DISASSEMBLY)
 	grep -q 'const v0, 0x7fffffff' $(DEX_CANDIDATE_DISASSEMBLY)
 
+$(DEX_TEXT_DISASSEMBLY): $(DEX_TEXT_FILE) $(BAKSMALI_JAR)
+	mkdir -p build/exec/baksmali-text
+	java -jar $(BAKSMALI_JAR) disassemble $(DEX_TEXT_FILE) \
+		-o build/exec/baksmali-text
+
+dex-text-validation: dex-text-fixture $(DEX_TEXT_DISASSEMBLY)
+	python3 $(DEX_HEADER_CHECK) $(DEX_TEXT_FILE)
+	grep -q '^\.method public static echo_text(Ljava/lang/String;)Ljava/lang/String;$$' $(DEX_TEXT_DISASSEMBLY)
+	grep -q '^\.method public static icu_word()Ljava/lang/String;$$' $(DEX_TEXT_DISASSEMBLY)
+	grep -q 'move-object v0, p0' $(DEX_TEXT_DISASSEMBLY)
+	grep -q 'const-string v0, "icu"' $(DEX_TEXT_DISASSEMBLY)
+	grep -q 'return-object v0' $(DEX_TEXT_DISASSEMBLY)
+
 $(DEX_ORACLE_FILE): $(DEX_SMALI) $(SMALI_JAR)
 	mkdir -p build/exec/smali-oracle-source
 	cp $(DEX_SMALI) build/exec/smali-oracle-source/Generated.smali
@@ -164,11 +198,12 @@ dex-malformed-test: $(DEX_MALFORMED_FILE) $(BAKSMALI_JAR)
 		exit 1; \
 	fi
 
-dex-test: branch-separation check dex-fixture dex-encoder-selftest dex-determinism dex-reject \
-	dex-parser-validation dex-oracle-validation dex-malformed-test
+dex-test: branch-separation check dex-fixture dex-text-validation dex-encoder-selftest \
+	dex-determinism dex-reject dex-parser-validation dex-oracle-validation dex-malformed-test
 	@{ \
 		echo 'source checked        PASS'; \
 		echo 'checked ANF retained  PASS'; \
+		echo 'Text ABI encoded       PASS'; \
 		echo 'DEX generated         PASS'; \
 		echo 'DEX parser validation PASS'; \
 		echo 'oracle comparison     PASS'; \
@@ -184,8 +219,11 @@ dex-test: branch-separation check dex-fixture dex-encoder-selftest dex-determini
 		printf 'backend revision       '; git rev-parse HEAD; \
 		printf 'backend dirty state    '; if git status --porcelain | grep -q .; then echo dirty; else echo clean; fi; \
 		printf 'classes.dex SHA-256    '; sha256sum $(DEX_FILE) | cut -d' ' -f1; \
+		printf 'text.dex SHA-256       '; sha256sum $(DEX_TEXT_FILE) | cut -d' ' -f1; \
 		echo 'checked form           $(DEX_CHECKED_ANF)'; \
+		echo 'Text checked form      $(DEX_TEXT_CHECKED_ANF)'; \
 		echo 'DEX plan               $(DEX_PLAN)'; \
+		echo 'Text DEX plan          $(DEX_TEXT_PLAN)'; \
 	} >$(DEX_VALIDATION_RECEIPT)
 	@cat $(DEX_VALIDATION_RECEIPT)
 

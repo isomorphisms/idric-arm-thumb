@@ -29,7 +29,7 @@ expect_left label (Right value) = fail (label ++ ": malformed plan was accepted"
 private
 edge_method : MethodPlan
 edge_method =
-  MkMethodPlan "selftest" "edge_constants" 0 1
+  MkMethodPlan "selftest" "edge_constants" 0 [] IntegerValue 1
     [ IntegerConstant (MkRegister 0) (-2147483648)
     , IntegerConstant (MkRegister 0) 2147483647
     , ReturnInteger (MkRegister 0)
@@ -38,7 +38,7 @@ edge_method =
 private
 wide_move_method : MethodPlan
 wide_move_method =
-  MkMethodPlan "selftest" "wide_moves" 0 257
+  MkMethodPlan "selftest" "wide_moves" 0 [] IntegerValue 257
     [ IntegerConstant (MkRegister 255) 7
     , Move (MkRegister 256) (MkRegister 255)
     , Move (MkRegister 254) (MkRegister 256)
@@ -46,9 +46,25 @@ wide_move_method =
     ]
 
 private
+text_identity_method : MethodPlan
+text_identity_method =
+  MkMethodPlan "selftest" "echo_text" 1 [TextValue] TextValue 2
+    [ MoveObject (MkRegister 0) (MkRegister 1)
+    , ReturnObject (MkRegister 0)
+    ]
+
+private
+text_constant_method : MethodPlan
+text_constant_method =
+  MkMethodPlan "selftest" "icu_word" 0 [] TextValue 1
+    [ TextConstant (MkRegister 0) "icu"
+    , ReturnObject (MkRegister 0)
+    ]
+
+private
 bad_arithmetic_method : MethodPlan
 bad_arithmetic_method =
-  MkMethodPlan "selftest" "bad_arithmetic_register" 0 257
+  MkMethodPlan "selftest" "bad_arithmetic_register" 0 [] IntegerValue 257
     [ IntegerBinary AddInteger (MkRegister 256) (MkRegister 0) (MkRegister 1)
     , ReturnInteger (MkRegister 0)
     ]
@@ -56,7 +72,7 @@ bad_arithmetic_method =
 private
 bad_branch_method : MethodPlan
 bad_branch_method =
-  MkMethodPlan "selftest" "bad_branch_register" 0 18
+  MkMethodPlan "selftest" "bad_branch_register" 0 [] IntegerValue 18
     [ IntegerBranch LessThanInteger (MkRegister 16) (MkRegister 17) (MkLabel 0)
     , IntegerConstant (MkRegister 0) 0
     , Mark (MkLabel 0)
@@ -66,7 +82,7 @@ bad_branch_method =
 private
 long_goto_method : MethodPlan
 long_goto_method =
-  MkMethodPlan "selftest" "long_goto" 0 1
+  MkMethodPlan "selftest" "long_goto" 0 [] IntegerValue 1
     (Goto (MkLabel 0) ::
      replicate 128 (IntegerConstant (MkRegister 0) 0) ++
      [Mark (MkLabel 0), ReturnInteger (MkRegister 0)])
@@ -83,7 +99,9 @@ main = do
     (sha1 [97, 98, 99])
   expect_equal "Adler-32 Wikipedia" 0x11e60398
     (adler32 (map ord (unpack "Wikipedia")))
-  let plan = MkFilePlan "LIdric/SelfTest;" [edge_method, wide_move_method]
+  let plan =
+        MkFilePlan "LIdric/SelfTest;"
+          [edge_method, wide_move_method, text_identity_method, text_constant_method]
   first <- case encode_dex plan of
     Left explanation => fail explanation
     Right bytes => pure bytes
