@@ -165,6 +165,9 @@ compile_dex definitions syntax temporary_directory output_directory
             term requested_output_name = do
   resolved_compile_data <-
     getCompileDataWith [backend_name] False Administrative_Normal_Form term
+  let compiler_anf_file =
+        output_directory </> (requested_output_name ++ ".compiler.anf")
+  Core.writeFile compiler_anf_file (show (anf resolved_compile_data))
   qualified_exports <- traverse fully_qualified_export (exported resolved_compile_data)
   export_abis <- traverse resolve_export_abi qualified_exports
   integer_less_name <-
