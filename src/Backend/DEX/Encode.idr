@@ -102,6 +102,12 @@ instruction_width (IntegerBinary _ destination left right) =
      valid_register 255 left && valid_register 255 right
     then Right 2
     else Left "DEX format 23x Int32 arithmetic requires registers v0..v255"
+instruction_width (TextEqual destination left right) =
+  if valid_register 255 destination &&
+     valid_register 15 left && valid_register 15 right
+    then Right 4
+    else Left
+      "DEX first String.equals slice requires result v0..v255 and operands v0..v15"
 instruction_width (IntegerBranch _ left right target) =
   if valid_register 15 left && valid_register 15 right
     then Right 2
@@ -184,10 +190,11 @@ encode_move narrow_opcode from16_opcode wide_opcode destination source = do
 
 private
 encode_instruction :
-  List String -> List (Label, Int) -> Int -> Instruction ->
+  List String -> Maybe Int -> List (Label, Int) -> Int -> Instruction ->
   Either String (List Int)
-encode_instruction strings labels address (Mark label) = Right []
-encode_instruction strings labels address instruction@(IntegerConstant destination value) = do
+encode_instruction strings text_equals_method labels address (Mark label) = Right []
+encode_instruction strings text_equals_method labels address
+  instruction@(IntegerConstant destination value) = do
   width <- instruction_width instruction
   let register = cast destination.number
   let literal : Integer = cast value
@@ -198,7 +205,8 @@ encode_instruction strings labels address instruction@(IntegerConstant destinati
           (0x12 + register * 256 + unsigned_mod literal 16 * 4096))
     2 => Right (u16le (0x13 + register * 256) ++ u16le literal)
     _ => Right (u16le (0x14 + register * 256) ++ u32le literal)
-encode_instruction strings labels address instruction@(TextConstant destination value) = do
+encode_instruction strings text_equals_method labels address
+  instruction@(TextConstant destination value) = do
   _ <- instruction_width instruction
   string_index <- lookup_index "const-string" value strings
   if string_index > 65535
@@ -207,16 +215,33 @@ encode_instruction strings labels address instruction@(TextConstant destination 
       Right
         (u16le (0x1a + cast destination.number * 256) ++
          u16le (cast string_index))
-encode_instruction strings labels address (Move destination source) =
+encode_instruction strings text_equals_method labels address (Move destination source) =
   encode_move 0x01 0x02 0x03 destination source
-encode_instruction strings labels address (MoveObject destination source) =
+encode_instruction strings text_equals_method labels address (MoveObject destination source) =
   encode_move 0x07 0x08 0x09 destination source
-encode_instruction strings labels address instruction@(IntegerBinary operation destination left right) = do
+encode_instruction strings text_equals_method labels address
+  instruction@(IntegerBinary operation destination left right) = do
   _ <- instruction_width instruction
   Right
     (u16le (binary_opcode operation + cast destination.number * 256) ++
      u16le (cast left.number + cast right.number * 256))
-encode_instruction strings labels address instruction@(IntegerBranch condition left right target) = do
+encode_instruction strings text_equals_method labels address
+  instruction@(TextEqual destination left right) = do
+  _ <- instruction_width instruction
+  method_index <-
+    case text_equals_method of
+      Nothing => Left "DEX String.equals method reference was not prepared"
+      Just index => Right index
+  if method_index > 65535
+    then Left "DEX method index for String.equals exceeds format 35c"
+    else
+      Right
+        (u16le 0x206e ++
+         u16le (cast method_index) ++
+         u16le (cast left.number + cast right.number * 16) ++
+         u16le (0x0a + cast destination.number * 256))
+encode_instruction strings text_equals_method labels address
+  instruction@(IntegerBranch condition left right target) = do
   _ <- instruction_width instruction
   target_address <- find_label target labels
   let offset = target_address - address
@@ -231,7 +256,7 @@ encode_instruction strings labels address instruction@(IntegerBranch condition l
           (branch_opcode condition + cast left.number * 256 +
            cast right.number * 4096) ++
          u16le (cast offset))
-encode_instruction strings labels address instruction@(Goto target) = do
+encode_instruction strings text_equals_method labels address instruction@(Goto target) = do
   _ <- instruction_width instruction
   target_address <- find_label target labels
   let offset = target_address - address
@@ -241,29 +266,33 @@ encode_instruction strings labels address instruction@(Goto target) = do
         ("First DEX goto format 10t offset is zero or out of range at code unit " ++
          show address ++ ": " ++ show offset)
     else Right (u16le (0x28 + unsigned_mod (cast offset) 256 * 256))
-encode_instruction strings labels address instruction@(ReturnInteger register) = do
+encode_instruction strings text_equals_method labels address
+  instruction@(ReturnInteger register) = do
   _ <- instruction_width instruction
   Right (u16le (0x0f + cast register.number * 256))
-encode_instruction strings labels address instruction@(ReturnObject register) = do
+encode_instruction strings text_equals_method labels address
+  instruction@(ReturnObject register) = do
   _ <- instruction_width instruction
   Right (u16le (0x11 + cast register.number * 256))
 
 private
 encode_instruction_stream :
-  List String -> List (Label, Int) -> Int -> List Instruction ->
+  List String -> Maybe Int -> List (Label, Int) -> Int -> List Instruction ->
   Either String (List Int)
-encode_instruction_stream strings labels address [] = Right []
-encode_instruction_stream strings labels address (instruction :: rest) = do
-  encoded <- encode_instruction strings labels address instruction
+encode_instruction_stream strings text_equals_method labels address [] = Right []
+encode_instruction_stream strings text_equals_method labels address (instruction :: rest) = do
+  encoded <- encode_instruction strings text_equals_method labels address instruction
   width <- instruction_width instruction
-  more <- encode_instruction_stream strings labels (address + width) rest
+  more <-
+    encode_instruction_stream strings text_equals_method labels (address + width) rest
   Right (encoded ++ more)
 
 private
-encode_instructions : List String -> List Instruction -> Either String (List Int)
-encode_instructions strings instructions = do
+encode_instructions :
+  List String -> Maybe Int -> List Instruction -> Either String (List Int)
+encode_instructions strings text_equals_method instructions = do
   labels <- label_addresses instructions
-  encode_instruction_stream strings labels 0 instructions
+  encode_instruction_stream strings text_equals_method labels 0 instructions
 
 private
 record Prototype where
@@ -280,6 +309,10 @@ Eq Prototype where
 private
 prototype_of : MethodPlan -> Prototype
 prototype_of method = MkPrototype method.parameter_types method.result_type
+
+private
+text_equals_prototype : Prototype
+text_equals_prototype = MkPrototype [ObjectValue] BooleanValue
 
 private
 compare_descriptors : List String -> List String -> Ordering
@@ -374,15 +407,27 @@ instruction_texts (TextConstant destination value) = [value]
 instruction_texts instruction = []
 
 private
+instruction_uses_text_equal : Instruction -> Bool
+instruction_uses_text_equal (TextEqual _ _ _) = True
+instruction_uses_text_equal _ = False
+
+private
+method_uses_text_equal : MethodPlan -> Bool
+method_uses_text_equal method = any instruction_uses_text_equal method.instructions
+
+private
 method_texts : MethodPlan -> List String
 method_texts method = concat (map instruction_texts method.instructions)
 
 private
-type_descriptors : String -> List MethodPlan -> List String
-type_descriptors class_descriptor methods =
+type_descriptors : Bool -> String -> List MethodPlan -> List String
+type_descriptors include_text_equal class_descriptor methods =
   sort
     (nub
       ([class_descriptor, "Ljava/lang/Object;"] ++
+       (if include_text_equal
+          then ["Ljava/lang/String;", "Ljava/lang/Object;", "Z"]
+          else []) ++
        concat
          (map
            (\method =>
@@ -392,12 +437,13 @@ type_descriptors class_descriptor methods =
 
 private
 all_strings :
-  String -> List MethodPlan -> List Prototype -> List String -> List String
-all_strings descriptor methods prototypes descriptors =
+  Bool -> String -> List MethodPlan -> List Prototype -> List String -> List String
+all_strings include_text_equal descriptor methods prototypes descriptors =
   sort
     (nub
       (descriptors ++
        map method_name methods ++
+       (if include_text_equal then ["equals"] else []) ++
        map shorty prototypes ++
        concat (map method_texts methods)))
 
@@ -474,10 +520,10 @@ record PreparedMethod where
 
 private
 prepare_methods :
-  List String -> List Prototype -> Int -> List MethodPlan ->
+  List String -> List Prototype -> Maybe Int -> Int -> List MethodPlan ->
   Either String (List PreparedMethod)
-prepare_methods strings prototypes next_index [] = Right []
-prepare_methods strings prototypes next_index (method :: rest) = do
+prepare_methods strings prototypes text_equals_method next_index [] = Right []
+prepare_methods strings prototypes text_equals_method next_index (method :: rest) = do
   if method.parameter_count < 0 ||
      method.parameter_count /= cast (length method.parameter_types) ||
      method.register_count < method.parameter_count ||
@@ -485,11 +531,17 @@ prepare_methods strings prototypes next_index (method :: rest) = do
     then Left ("Invalid DEX register/parameter counts for " ++ method.method_name)
     else Right ()
   prototype_index <- lookup_index "prototype" (prototype_of method) prototypes
-  bytes <- encode_instructions strings method.instructions
-  more <- prepare_methods strings prototypes (next_index + 1) rest
+  bytes <- encode_instructions strings text_equals_method method.instructions
+  more <-
+    prepare_methods strings prototypes text_equals_method (next_index + 1) rest
   Right
     (MkPreparedMethod method next_index prototype_index bytes
       (cast (length bytes) `div` 2) 0 :: more)
+
+private
+outgoing_register_count : List Instruction -> Int
+outgoing_register_count instructions =
+  if any instruction_uses_text_equal instructions then 2 else 0
 
 private
 record CodeLayout where
@@ -511,7 +563,8 @@ layout_code_from current (method :: rest) accumulated laid_out first =
       header =
         u16le (cast method.plan.register_count) ++
         u16le (cast method.plan.parameter_count) ++
-        u16le 0 ++ u16le 0 ++ u32le 0 ++
+        u16le (cast (outgoing_register_count method.plan.instructions)) ++
+        u16le 0 ++ u32le 0 ++
         u32le (cast method.instruction_units)
       item = header ++ method.instruction_bytes
       placed = { code_offset := start } method
@@ -631,21 +684,34 @@ encode_dex file_plan = do
   case find_duplicate_method methods of
     Just duplicate => Left ("Duplicate DEX method signature " ++ duplicate)
     Nothing => Right ()
-  let prototypes = unique_prototypes methods
-  let descriptors = type_descriptors file_plan.class_descriptor methods
-  let strings = all_strings file_plan.class_descriptor methods prototypes descriptors
+  let include_text_equal = any method_uses_text_equal methods
+  let generated_prototypes = unique_prototypes methods
+  let prototypes =
+        if include_text_equal
+          then insert_prototype text_equals_prototype generated_prototypes
+          else generated_prototypes
+  let descriptors =
+        type_descriptors include_text_equal file_plan.class_descriptor methods
+  let strings =
+        all_strings include_text_equal file_plan.class_descriptor methods prototypes descriptors
+  let generated_method_count : Int = cast (length methods)
+  let external_method_count : Int = if include_text_equal then 1 else 0
+  let method_id_count = generated_method_count + external_method_count
+  let text_equals_method_index =
+        if include_text_equal then Just generated_method_count else Nothing
   let string_ids_off = 112
   let type_ids_off = string_ids_off + 4 * cast (length strings)
   let proto_ids_off = type_ids_off + 4 * cast (length descriptors)
   let method_ids_off = proto_ids_off + 12 * cast (length prototypes)
-  let class_defs_off = method_ids_off + 8 * cast (length methods)
+  let class_defs_off = method_ids_off + 8 * method_id_count
   let data_off = class_defs_off + 32
   class_type_index <-
     lookup_index "generated class type" file_plan.class_descriptor descriptors
   object_type_index <-
     lookup_index "Object type" "Ljava/lang/Object;" descriptors
   type_lists <- layout_type_lists descriptors data_off prototypes
-  prepared <- prepare_methods strings prototypes 0 methods
+  prepared <-
+    prepare_methods strings prototypes text_equals_method_index 0 methods
   let code = layout_code type_lists.next_offset prepared
   strings_layout <- layout_strings code.next_offset strings
   let class_data_bytes = class_data code.methods
@@ -666,13 +732,31 @@ encode_dex file_plan = do
                          Right (u32le (cast index))) descriptors
   proto_id_bytes <-
     traverse (prototype_bytes strings descriptors type_lists) prototypes
-  method_id_bytes <-
+  generated_method_id_bytes <-
     traverse
       (\method => do name_index <- lookup_index "method name" method.plan.method_name strings
                      Right
                        (u16le (cast class_type_index) ++
                         u16le (cast method.prototype_index) ++
                         u32le (cast name_index))) code.methods
+  text_equals_method_id_bytes <-
+    if include_text_equal
+      then do
+        string_type_index <-
+          lookup_index "String type" "Ljava/lang/String;" descriptors
+        if class_type_index >= string_type_index
+          then
+            Left
+              "Checked String.equals slice requires generated class method_ids to sort before java/lang/String"
+          else Right ()
+        prototype_index <-
+          lookup_index "String.equals prototype" text_equals_prototype prototypes
+        name_index <- lookup_index "String.equals name" "equals" strings
+        Right
+          (u16le (cast string_type_index) ++
+           u16le (cast prototype_index) ++
+           u32le (cast name_index))
+      else Right []
   let class_def_bytes =
         u32le (cast class_type_index) ++ u32le 0x11 ++
         u32le (cast object_type_index) ++ u32le 0 ++
@@ -682,7 +766,7 @@ encode_dex file_plan = do
         , map_item 0x0001 (cast (length strings)) string_ids_off
         , map_item 0x0002 (cast (length descriptors)) type_ids_off
         , map_item 0x0003 (cast (length prototypes)) proto_ids_off
-        , map_item 0x0005 (cast (length methods)) method_ids_off
+        , map_item 0x0005 method_id_count method_ids_off
         , map_item 0x0006 1 class_defs_off
         ]
   let type_list_map =
@@ -706,12 +790,13 @@ encode_dex file_plan = do
         u32le (cast (length descriptors)) ++ u32le (cast type_ids_off) ++
         u32le (cast (length prototypes)) ++ u32le (cast proto_ids_off) ++
         u32le 0 ++ u32le 0 ++
-        u32le (cast (length methods)) ++ u32le (cast method_ids_off) ++
+        u32le (cast method_id_count) ++ u32le (cast method_ids_off) ++
         u32le 1 ++ u32le (cast class_defs_off) ++
         u32le (cast data_size) ++ u32le (cast data_off)
   let unsigned_file =
         header ++ concat string_id_bytes ++ concat type_id_bytes ++
-        concat proto_id_bytes ++ concat method_id_bytes ++ class_def_bytes ++
+        concat proto_id_bytes ++ concat generated_method_id_bytes ++
+        text_equals_method_id_bytes ++ class_def_bytes ++
         type_lists.bytes ++ code.bytes ++ strings_layout.bytes ++
         class_data_bytes ++ padding before_map 4 ++ map_bytes
   if cast (length unsigned_file) /= file_size

@@ -81,9 +81,12 @@ $(DEX_TEXT_FILE) $(DEX_TEXT_CHECKED_ANF) $(DEX_TEXT_PLAN) $(DEX_TEXT_SMALI) &: $
 dex-text-fixture: $(DEX_TEXT_FILE) $(DEX_TEXT_CHECKED_ANF) $(DEX_TEXT_PLAN) $(DEX_TEXT_SMALI)
 	grep -q '^export DexText.echo_text as echo_text$$' $(DEX_TEXT_CHECKED_ANF)
 	grep -q '^export DexText.icu_word as icu_word$$' $(DEX_TEXT_CHECKED_ANF)
+	grep -q '^export DexText.text_equal as text_equal$$' $(DEX_TEXT_CHECKED_ANF)
 	grep -q '^method echo_text$$' $(DEX_TEXT_PLAN)
 	grep -q '^parameters: \[Text\]$$' $(DEX_TEXT_PLAN)
 	grep -q '^result: Text$$' $(DEX_TEXT_PLAN)
+	grep -q '^method text_equal$$' $(DEX_TEXT_PLAN)
+	grep -q 'text-equal' $(DEX_TEXT_PLAN)
 	grep -q 'move-object' $(DEX_TEXT_PLAN)
 	grep -q 'const-string' $(DEX_TEXT_PLAN)
 	grep -q 'return-object' $(DEX_TEXT_PLAN)
@@ -166,8 +169,11 @@ dex-text-validation: dex-text-fixture $(DEX_TEXT_DISASSEMBLY)
 	python3 $(DEX_HEADER_CHECK) $(DEX_TEXT_FILE)
 	grep -q '^\.method public static echo_text(Ljava/lang/String;)Ljava/lang/String;$$' $(DEX_TEXT_DISASSEMBLY)
 	grep -q '^\.method public static icu_word()Ljava/lang/String;$$' $(DEX_TEXT_DISASSEMBLY)
+	grep -q '^\.method public static text_equal(Ljava/lang/String;Ljava/lang/String;)I$$' $(DEX_TEXT_DISASSEMBLY)
 	grep -q 'move-object v0, p0' $(DEX_TEXT_DISASSEMBLY)
 	grep -q 'const-string v0, "icu"' $(DEX_TEXT_DISASSEMBLY)
+	grep -q 'invoke-virtual {p0, p1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z' $(DEX_TEXT_DISASSEMBLY)
+	grep -q 'move-result' $(DEX_TEXT_DISASSEMBLY)
 	grep -q 'return-object v0' $(DEX_TEXT_DISASSEMBLY)
 
 $(DEX_ORACLE_FILE): $(DEX_SMALI) $(SMALI_JAR)
@@ -204,6 +210,7 @@ dex-test: branch-separation check dex-fixture dex-text-validation dex-encoder-se
 		echo 'source checked        PASS'; \
 		echo 'checked ANF retained  PASS'; \
 		echo 'Text ABI encoded       PASS'; \
+		echo 'Text equality encoded  PASS'; \
 		echo 'DEX generated         PASS'; \
 		echo 'DEX parser validation PASS'; \
 		echo 'oracle comparison     PASS'; \

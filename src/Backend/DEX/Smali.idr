@@ -36,6 +36,10 @@ render_instruction (TextConstant destination value) =
 render_instruction (IntegerBinary operation destination left right) =
   show operation ++ " " ++ show destination ++ ", " ++
   show left ++ ", " ++ show right
+render_instruction (TextEqual destination left right) =
+  "invoke-virtual {" ++ show left ++ ", " ++ show right ++
+  "}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n    move-result " ++
+  show destination
 render_instruction (IntegerBranch condition left right target) =
   show condition ++ " " ++ show left ++ ", " ++ show right ++ ", " ++ show target
 render_instruction (Goto target) = "goto " ++ show target

@@ -9,3 +9,7 @@ echo_text text = text
 %export "dex:icu_word"
 icu_word : String
 icu_word = "icu"
+
+%export "dex:text_equal"
+text_equal : String -> String -> Int32
+text_equal left right = if left == right then 1 else 0

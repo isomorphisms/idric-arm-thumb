@@ -32,33 +32,45 @@ public export
 Show Label where
   show label = ":label_" ++ show label.number
 
-||| The first source-level value classes admitted at a DEX method boundary.
-||| Text is an ART object reference; Int32 remains a one-register primitive.
+||| Value classes used by the checked DEX method and runtime-call boundary.
+||| Only Int32 and Text are admitted as source export parameters/results today;
+||| Boolean and Object exist so checked Text operations can name their real ART
+||| method signatures without pretending that references are integers.
 public export
 data ValueType
   = IntegerValue
   | TextValue
+  | BooleanValue
+  | ObjectValue
 
 public export
 Eq ValueType where
   IntegerValue == IntegerValue = True
   TextValue == TextValue = True
+  BooleanValue == BooleanValue = True
+  ObjectValue == ObjectValue = True
   _ == _ = False
 
 public export
 Show ValueType where
   show IntegerValue = "Int32"
   show TextValue = "Text"
+  show BooleanValue = "Boolean"
+  show ObjectValue = "Object"
 
 public export
 value_descriptor : ValueType -> String
 value_descriptor IntegerValue = "I"
 value_descriptor TextValue = "Ljava/lang/String;"
+value_descriptor BooleanValue = "Z"
+value_descriptor ObjectValue = "Ljava/lang/Object;"
 
 public export
 shorty_character : ValueType -> Char
 shorty_character IntegerValue = 'I'
 shorty_character TextValue = 'L'
+shorty_character BooleanValue = 'Z'
+shorty_character ObjectValue = 'L'
 
 public export
 data IntegerBinaryOperation
@@ -100,6 +112,7 @@ data Instruction
   | IntegerConstant Register Int
   | TextConstant Register String
   | IntegerBinary IntegerBinaryOperation Register Register Register
+  | TextEqual Register Register Register
   | IntegerBranch IntegerCondition Register Register Label
   | Goto Label
   | Mark Label
@@ -119,6 +132,8 @@ Show Instruction where
   show (IntegerBinary operation destination left right) =
     show operation ++ " " ++ show destination ++ ", " ++
     show left ++ ", " ++ show right
+  show (TextEqual destination left right) =
+    "text-equal " ++ show destination ++ ", " ++ show left ++ ", " ++ show right
   show (IntegerBranch condition left right target) =
     show condition ++ " " ++ show left ++ ", " ++
     show right ++ ", " ++ show target
