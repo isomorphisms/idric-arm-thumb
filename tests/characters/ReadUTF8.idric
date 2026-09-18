@@ -1,0 +1,7 @@
+module ReadUTF8
+
+%export "arm-thumb:main"
+main : IO ()
+main = do
+  s <- getLine
+  putStr s
