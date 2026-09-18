@@ -1,0 +1,54 @@
+module FieldmouseSameValue
+
+import RendererPrimitives
+
+-- Real application-derived two-value choice dispatch.
+--
+-- This mirrors Field Mouse's `same_value` function from the pinned source:
+-- https://github.com/isomorphisms/fieldmouse/blob/3ad88740df66e929d5cb195af6de255336afef7e/Fieldmouse.idric
+--
+-- Field Mouse currently uses Double and String payloads.  This fixture uses
+-- Float32 and Int32 stand-ins so the test isolates constructor/tag dispatch and
+-- same-constructor payload comparison without requiring Double/String runtime
+-- support in the ARM/Thumb fixture ABI.
+choice fieldmouse_same_value one_of
+  fieldmouse_undefined_value
+  fieldmouse_null_value
+  fieldmouse_boolean_value Bool
+  fieldmouse_number_value Float32
+  fieldmouse_string_value Int32
+
+same_value_slot : fieldmouse_same_value -> fieldmouse_same_value -> Int32
+same_value_slot fieldmouse_undefined_value fieldmouse_undefined_value = 1
+same_value_slot fieldmouse_null_value fieldmouse_null_value = 1
+same_value_slot (fieldmouse_boolean_value left) (fieldmouse_boolean_value right) =
+  if left == right then 1 else 0
+same_value_slot (fieldmouse_number_value left) (fieldmouse_number_value right) =
+  if left == right then 1 else 0
+same_value_slot (fieldmouse_string_value left) (fieldmouse_string_value right) =
+  if left == right then 1 else 0
+same_value_slot _ _ = 0
+
+value_from_selector : Int32 -> fieldmouse_same_value
+value_from_selector selector =
+  case selector of
+    0 => fieldmouse_undefined_value
+    1 => fieldmouse_null_value
+    2 => fieldmouse_boolean_value False
+    3 => fieldmouse_boolean_value True
+    4 => fieldmouse_number_value 0.0
+    5 => fieldmouse_number_value 1.0
+    6 => fieldmouse_string_value 0
+    _ => fieldmouse_string_value 1
+
+-- Return values[1] when the two selected values are the same under the
+-- Field Mouse `same_value` shape, otherwise values[0].
+%export "arm-thumb:fieldmouse_same_value"
+fieldmouse_same_value_test : Float32Buffer -> Int32 -> Int32 -> Float32
+fieldmouse_same_value_test values left_selector right_selector =
+  let left = value_from_selector left_selector
+      right = value_from_selector right_selector
+  in float32_buffer_load values (same_value_slot left right)
+
+main : IO ()
+main = pure ()

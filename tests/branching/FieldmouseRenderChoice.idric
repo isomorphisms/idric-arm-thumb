@@ -1,0 +1,48 @@
+module FieldmouseRenderChoice
+
+import RendererPrimitives
+
+-- Real application-derived choice dispatch, reduced only enough to stay inside
+-- this backend's current runtime-free fixture surface.
+--
+-- This mirrors Field Mouse's `value` constructors and `render` pattern match:
+-- https://github.com/isomorphisms/fieldmouse/blob/3ad88740df66e929d5cb195af6de255336afef7e/Fieldmouse.idric#L348-L355
+--
+-- Field Mouse currently carries `Double` and `String` payloads.  This fixture
+-- deliberately substitutes Float32 and Int32 payloads so the test isolates
+-- choice construction/tag dispatch without importing floating-point widening,
+-- strings, allocation, or a larger exported ABI.  The payloads are otherwise
+-- irrelevant to the render branch selected.
+choice fieldmouse_render_value one_of
+  fieldmouse_undefined_value
+  fieldmouse_null_value
+  fieldmouse_boolean_value Bool
+  fieldmouse_number_value Float32
+  fieldmouse_string_value Int32
+
+fieldmouse_render_slot : fieldmouse_render_value -> Int32
+fieldmouse_render_slot fieldmouse_undefined_value = 0
+fieldmouse_render_slot fieldmouse_null_value = 1
+fieldmouse_render_slot (fieldmouse_boolean_value True) = 2
+fieldmouse_render_slot (fieldmouse_boolean_value False) = 3
+fieldmouse_render_slot (fieldmouse_number_value _) = 4
+fieldmouse_render_slot (fieldmouse_string_value _) = 5
+
+-- Selector slots: 0 undefined, 1 null, 2 true, 3 false, 4 number, otherwise text.
+-- The buffer maps the selected render branch to a distinct observable sentinel.
+%export "arm-thumb:fieldmouse_render_choice"
+fieldmouse_render_choice : Float32Buffer -> Int32 -> Float32
+fieldmouse_render_choice values selector =
+  let rendered_value : fieldmouse_render_value
+      rendered_value =
+        case selector of
+          0 => fieldmouse_undefined_value
+          1 => fieldmouse_null_value
+          2 => fieldmouse_boolean_value True
+          3 => fieldmouse_boolean_value False
+          4 => fieldmouse_number_value 1.0
+          _ => fieldmouse_string_value 0
+  in float32_buffer_load values (fieldmouse_render_slot rendered_value)
+
+main : IO ()
+main = pure ()

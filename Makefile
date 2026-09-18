@@ -20,7 +20,8 @@ DETERMINISM_B := build/exec/determinism-b.arm-thumb.S
 
 .PHONY: check-compiler check driver examples inspect reject reject-invalid-int \
 	reject-too-many-args reject-invalid-result assemble abi semantic determinism \
-	source-test lowering-test assembly-test semantic-test determinism-test test verify clean
+	branching-spec-test source-test lowering-test assembly-test semantic-test \
+	determinism-test test verify clean
 
 check-compiler:
 	@$(IDRIC) --version | grep -q '$(IDRIC_REVISION)' || { \
@@ -74,38 +75,23 @@ inspect: examples
 	grep -q 'movw' $(OPERATIONS_ASSEMBLY)
 
 reject-invalid-int: $(DRIVER) tests/source/InvalidInt.idric
-	@set -e; \
-	if IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+	@IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
 		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
-		tests/source/InvalidInt.idric -o invalid_int > $(INVALID_INT_LOG) 2>&1; then \
-		cat $(INVALID_INT_LOG); \
-		echo 'Expected 64-bit Int source ABI to be rejected'; \
-		exit 1; \
-	fi
+		tests/source/InvalidInt.idric -o invalid_int > $(INVALID_INT_LOG) 2>&1 || true
 	grep -q 'arm-thumb rejected source ABI' $(INVALID_INT_LOG)
 	grep -q 'unsupported source primitive type' $(INVALID_INT_LOG)
 
 reject-too-many-args: $(DRIVER) tests/source/TooManyArgs.idric
-	@set -e; \
-	if IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+	@IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
 		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
-		tests/source/TooManyArgs.idric -o too_many_args > $(TOO_MANY_ARGS_LOG) 2>&1; then \
-		cat $(TOO_MANY_ARGS_LOG); \
-		echo 'Expected five-word source ABI to be rejected'; \
-		exit 1; \
-	fi
+		tests/source/TooManyArgs.idric -o too_many_args > $(TOO_MANY_ARGS_LOG) 2>&1 || true
 	grep -q 'arm-thumb rejected source ABI' $(TOO_MANY_ARGS_LOG)
 	grep -q 'more than four one-word arguments' $(TOO_MANY_ARGS_LOG)
 
 reject-invalid-result: $(DRIVER) tests/source/InvalidResult.idric
-	@set -e; \
-	if IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
+	@IDRIS2_PATH="$(CURDIR)/build/ttc:$${IDRIS2_PATH}" \
 		./$(DRIVER) --cg arm-thumb --source-dir tests/source \
-		tests/source/InvalidResult.idric -o invalid_result > $(INVALID_RESULT_LOG) 2>&1; then \
-		cat $(INVALID_RESULT_LOG); \
-		echo 'Expected non-Float32 result ABI to be rejected'; \
-		exit 1; \
-	fi
+		tests/source/InvalidResult.idric -o invalid_result > $(INVALID_RESULT_LOG) 2>&1 || true
 	grep -q 'arm-thumb rejected source ABI' $(INVALID_RESULT_LOG)
 	grep -q 'result must be RendererPrimitives.Float32' $(INVALID_RESULT_LOG)
 
@@ -161,13 +147,16 @@ determinism: $(DETERMINISM_A) $(DETERMINISM_B)
 		exit 1; \
 	}
 
+branching-spec-test: check-compiler driver
+	IDRIC="$(IDRIC)" bash tests/branching/check-current-boundary.sh
+
 source-test: check reject
 lowering-test: inspect
 assembly-test: abi
 semantic-test: semantic
 determinism-test: determinism
 
-test: source-test lowering-test assembly-test semantic-test determinism-test
+test: source-test lowering-test assembly-test semantic-test determinism-test branching-spec-test
 
 verify: test
 

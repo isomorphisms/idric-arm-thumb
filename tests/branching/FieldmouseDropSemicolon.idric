@@ -1,0 +1,48 @@
+module FieldmouseDropSemicolon
+
+import RendererPrimitives
+
+-- Real application-derived nested token/payload dispatch.
+--
+-- This mirrors Field Mouse's `drop_semicolon` function from the pinned source:
+-- https://github.com/isomorphisms/fieldmouse/blob/3ad88740df66e929d5cb195af6de255336afef7e/Fieldmouse.idric
+--
+-- The real function matches a `List token` whose head is `symbol_token ";"`.
+-- This runtime-free fixture preserves that nested shape with a one-node stream:
+-- stream constructor -> token constructor -> symbol payload.  Int32 59 is the
+-- ASCII/Unicode scalar value for ';'.  The tail is represented only by a marker
+-- because allocation/list runtime support is intentionally not part of this
+-- branch fixture.
+choice fieldmouse_token one_of
+  fieldmouse_word_token Int32
+  fieldmouse_number_token Float32
+  fieldmouse_text_token Int32
+  fieldmouse_symbol_token Int32
+
+choice fieldmouse_token_stream one_of
+  fieldmouse_empty_stream
+  fieldmouse_cons_stream fieldmouse_token Int32
+
+drop_semicolon_slot : fieldmouse_token_stream -> Int32
+drop_semicolon_slot (fieldmouse_cons_stream (fieldmouse_symbol_token 59) _) = 1
+drop_semicolon_slot _ = 0
+
+stream_from_selector : Int32 -> fieldmouse_token_stream
+stream_from_selector selector =
+  case selector of
+    0 => fieldmouse_empty_stream
+    1 => fieldmouse_cons_stream (fieldmouse_symbol_token 59) 1
+    2 => fieldmouse_cons_stream (fieldmouse_symbol_token 44) 1
+    3 => fieldmouse_cons_stream (fieldmouse_word_token 0) 1
+    4 => fieldmouse_cons_stream (fieldmouse_text_token 0) 1
+    _ => fieldmouse_cons_stream (fieldmouse_number_token 1.0) 1
+
+-- Return values[1] only for the semicolon-head case that would be dropped;
+-- return values[0] for empty/non-semicolon input that would be preserved.
+%export "arm-thumb:fieldmouse_drop_semicolon"
+fieldmouse_drop_semicolon_test : Float32Buffer -> Int32 -> Float32
+fieldmouse_drop_semicolon_test values selector =
+  float32_buffer_load values (drop_semicolon_slot (stream_from_selector selector))
+
+main : IO ()
+main = pure ()

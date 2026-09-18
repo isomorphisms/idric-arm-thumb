@@ -1,0 +1,39 @@
+module IBSubstringCatStep
+
+import RendererPrimitives
+
+-- Browser workload origin and semantic reference:
+-- https://github.com/isomorphisms/ib/issues/33
+--
+-- One exact-search transition for the fixed literal "cat".  Repeated calls
+-- over successive input bytes implement a tiny DFA equivalent to sliding a
+-- fixed-string matcher across the text, without pulling String/List allocation
+-- into this branch-lowering fixture.
+--
+-- States:
+-- 0 no useful prefix, 1 saw "c", 2 saw "ca", 3 matched "cat".
+-- State 3 is absorbing so the sentinel reports whether a match has occurred.
+-- A fresh "c" after a failed longer prefix restarts at state 1, preserving the
+-- overlap behavior required by an exact substring scan.
+%export "arm-thumb:ib_substring_cat_step"
+ib_substring_cat_step : Float32Buffer -> Int32 -> Int32 -> Float32
+ib_substring_cat_step values state code_point =
+  let next_state : Int32
+      next_state =
+        case state of
+          0 =>
+            if code_point == 99 then 1 else 0
+          1 =>
+            if code_point == 97
+              then 2
+              else if code_point == 99 then 1 else 0
+          2 =>
+            if code_point == 116
+              then 3
+              else if code_point == 99 then 1 else 0
+          3 => 3
+          _ => 0
+  in float32_buffer_load values next_state
+
+main : IO ()
+main = pure ()

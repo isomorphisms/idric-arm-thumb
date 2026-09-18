@@ -1,0 +1,20 @@
+module AsciiCaseBit
+
+import Data.Bits
+import RendererPrimitives
+
+-- ASCII letters differ only in bit 5 (value 32).  Guard the letter ranges so
+-- punctuation whose code point also has that bit is not accidentally changed.
+%export "arm-thumb:ascii_case_bit"
+ascii_case_bit : Float32Buffer -> Int32 -> Float32
+ascii_case_bit values code_point =
+  let is_uppercase = code_point >= 65 && code_point <= 90
+      is_lowercase = code_point >= 97 && code_point <= 122
+      toggled =
+        if is_uppercase || is_lowercase
+          then code_point `xor` 32
+          else code_point
+  in float32_buffer_load values toggled
+
+main : IO ()
+main = pure ()

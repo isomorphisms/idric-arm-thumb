@@ -1,0 +1,39 @@
+module UnicodeRangeLookup
+
+import RendererPrimitives
+
+-- A deliberately small Unicode-property fixture shaped like a real compressed
+-- Unicode table: decide by ranges, not by a 1,114,112-entry switch.
+--
+-- Property slots:
+-- 0 invalid scalar, 1 ASCII uppercase, 2 ASCII lowercase, 3 ASCII digit,
+-- 4 combining mark block, 5 Greek, 6 Cyrillic, 7 Hebrew, 8 Arabic,
+-- 9 Devanagari, 10 Hiragana, 11 Katakana, 12 CJK unified ideographs,
+-- 13 Hangul syllables, 14 emoji-heavy supplementary range, 15 other scalar.
+%export "arm-thumb:unicode_range_lookup"
+unicode_range_lookup : Float32Buffer -> Int32 -> Float32
+unicode_range_lookup values code_point =
+  let property_index : Int32
+      property_index =
+        if code_point < 0 then 0
+        else if code_point > 0x10ffff then 0
+        else if code_point >= 0xd800 && code_point <= 0xdfff then 0
+        else if code_point >= 65 && code_point <= 90 then 1
+        else if code_point >= 97 && code_point <= 122 then 2
+        else if code_point >= 48 && code_point <= 57 then 3
+        else if code_point >= 0x0300 && code_point <= 0x036f then 4
+        else if code_point >= 0x0370 && code_point <= 0x03ff then 5
+        else if code_point >= 0x0400 && code_point <= 0x04ff then 6
+        else if code_point >= 0x0590 && code_point <= 0x05ff then 7
+        else if code_point >= 0x0600 && code_point <= 0x06ff then 8
+        else if code_point >= 0x0900 && code_point <= 0x097f then 9
+        else if code_point >= 0x3040 && code_point <= 0x309f then 10
+        else if code_point >= 0x30a0 && code_point <= 0x30ff then 11
+        else if code_point >= 0x4e00 && code_point <= 0x9fff then 12
+        else if code_point >= 0xac00 && code_point <= 0xd7af then 13
+        else if code_point >= 0x1f300 && code_point <= 0x1faff then 14
+        else 15
+  in float32_buffer_load values property_index
+
+main : IO ()
+main = pure ()

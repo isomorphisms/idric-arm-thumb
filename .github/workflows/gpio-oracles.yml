@@ -1,0 +1,45 @@
+name: ARMv7 GPIO device-action oracles
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native-oracles:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ARM cross and user-mode tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabihf qemu-user
+      - name: Build and inspect ARM GPIO v2 programs
+        run: sh tests/gpio/check.sh
+
+  full-system-gpio-sim:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross-bootstrap and system-emulation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            binfmt-support \
+            debootstrap \
+            e2fsprogs \
+            gcc-arm-linux-gnueabihf \
+            qemu-system-arm \
+            qemu-user-static
+      - name: Boot Ubuntu armhf and exercise simulated GPIO
+        run: sh tests/gpio/full-system-ubuntu.sh
+      - name: Retain guest receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-system-armv7-gpio
+          path: build/full-system-arm-gpio/serial.log
+          if-no-files-found: warn

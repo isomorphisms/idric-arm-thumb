@@ -29,12 +29,15 @@ jobs:
           sudo apt-get install -y build-essential curl ca-certificates clang lld file libgmp-dev qemu-user
 
       - name: Bootstrap pinned Idriç
-        run: ./Idric/edric bootstrap
+        run: |
+          ./Idric/edric bootstrap
+          printf '%s\n' "$GITHUB_WORKSPACE/Idric/.tools/bin" >> "$GITHUB_PATH"
 
       - name: Install pinned Idriç libraries and compiler API
         run: |
           make -C Idric install-bootstrap-libs IDRIS2="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
           make -C Idric install-api IDRIS2_BOOT="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+          make -C Idric install-support
 
       - name: Compile, inspect, assemble, and execute Thumb verification
         run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
