@@ -42,7 +42,6 @@ test -d "$payload/lib"
 unsigned="$work/manifest.apk"
 unaligned="$work/unaligned.apk"
 aligned="$work/aligned.apk"
-keystore="$work/debug.keystore"
 
 "$aapt2" link \
   -I "$android_jar" \
@@ -55,33 +54,66 @@ cp "$unsigned" "$unaligned"
 zip -q -j "$unaligned" "$classes_dex"
 (
   cd "$payload"
-  zip -q -r "$unaligned" lib assets
+  # Android packages that request extractNativeLibs=false must keep native
+  # libraries uncompressed so the loader can mmap them directly from the APK.
+  zip -q -0 -r "$unaligned" lib
+  zip -q -r "$unaligned" assets
 )
 
-"$zipalign" -f -p 4 "$unaligned" "$aligned"
-keytool -genkeypair -noprompt \
-  -keystore "$keystore" \
-  -storepass android \
-  -keypass android \
-  -alias androiddebugkey \
-  -dname 'CN=Android Debug,O=Android,C=US' \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000 >/dev/null 2>&1
+# Align uncompressed native libraries for both 4 KiB and 16 KiB page devices.
+"$zipalign" -P 16 -f 4 "$unaligned" "$aligned"
+keystore=${ANDROID_KEYSTORE:-}
+keystore_password=${ANDROID_KEYSTORE_PASSWORD:-wegert-debug}
+key_password=${ANDROID_KEY_PASSWORD:-$keystore_password}
+key_alias=${ANDROID_KEY_ALIAS:-wegert-debug}
+expected_signer_sha256=${ANDROID_EXPECTED_CERT_SHA256:-DE:9B:1D:47:C5:A6:5E:6D:46:A2:04:B7:9D:D9:EE:56:6B:9D:3C:98:32:BA:81:EB:C4:21:3D:33:92:E9:2F:F9}
+
+[[ -n $keystore ]] || {
+  echo 'ANDROID_KEYSTORE is required; refusing to generate a throwaway APK signer' >&2
+  exit 1
+}
+[[ -f $keystore ]] || { echo "missing Android signing keystore: $keystore" >&2; exit 1; }
+
+signer_sha256=$(
+  keytool -list -v \
+    -keystore "$keystore" \
+    -storepass "$keystore_password" \
+    -alias "$key_alias" 2>/dev/null |
+    sed -n 's/^[[:space:]]*SHA256: //p' |
+    head -n 1
+)
+[[ $signer_sha256 == "$expected_signer_sha256" ]] || {
+  echo "unexpected Android test signer: ${signer_sha256:-missing}" >&2
+  exit 1
+}
+
 "$apksigner" sign \
   --ks "$keystore" \
-  --ks-pass pass:android \
-  --key-pass pass:android \
+  --ks-key-alias "$key_alias" \
+  --ks-pass "pass:$keystore_password" \
+  --key-pass "pass:$key_password" \
   --out "$output" \
   "$aligned"
-"$apksigner" verify --verbose "$output"
 
-unzip -l "$output" > "$work/files.txt"
+"$apksigner" verify --verbose --print-certs "$output" |
+  tee "$work/signing.txt"
+expected_digest=$(printf '%s' "$expected_signer_sha256" | tr '[:upper:]' '[:lower:]' | tr -d ':')
+grep -Fq "Signer #1 certificate SHA-256 digest: $expected_digest" "$work/signing.txt"
+"$zipalign" -c -P 16 -v 4 "$output" >/dev/null
+
+unzip -lv "$output" > "$work/files.txt"
 grep -Eq '[[:space:]]classes\.dex$' "$work/files.txt"
 grep -Eq '[[:space:]]lib/x86_64/.+\.so$' "$work/files.txt"
 grep -Eq '[[:space:]]lib/arm64-v8a/.+\.so$' "$work/files.txt"
 grep -Eq '[[:space:]]lib/armeabi-v7a/.+\.so$' "$work/files.txt"
 grep -Eq '[[:space:]]assets/.+' "$work/files.txt"
+awk '
+  $8 ~ /^lib\/.+\.so$/ && $2 != "Stored" {
+    print "compressed native library: " $8 > "/dev/stderr"
+    bad = 1
+  }
+  END { exit bad }
+' "$work/files.txt"
 
 printf 'direct DEX APK          %s\n' "$output"
 printf 'direct classes SHA-256 %s\n' "$(sha256sum "$classes_dex" | cut -d' ' -f1)"

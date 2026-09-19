@@ -43,7 +43,6 @@ cp "$native_library" "$work/lib/$abi/libwegert.so"
 unsigned="$work/manifest.apk"
 unaligned="$work/unaligned.apk"
 aligned="$work/aligned.apk"
-keystore="$work/debug.keystore"
 
 "$aapt2" link \
   -I "$android_jar" \
@@ -60,20 +59,41 @@ zip -q -j "$unaligned" "$classes_dex"
 )
 
 "$zipalign" -f -p 4 "$unaligned" "$aligned"
-keytool -genkeypair -noprompt \
-  -keystore "$keystore" \
-  -storepass android \
-  -keypass android \
-  -alias androiddebugkey \
-  -dname 'CN=Android Debug,O=Android,C=US' \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000 >/dev/null 2>&1
+keystore=${ANDROID_KEYSTORE:-}
+keystore_password=${ANDROID_KEYSTORE_PASSWORD:-wegert-debug}
+key_password=${ANDROID_KEY_PASSWORD:-$keystore_password}
+key_alias=${ANDROID_KEY_ALIAS:-wegert-debug}
+expected_signer_sha256=${ANDROID_EXPECTED_CERT_SHA256:-DE:9B:1D:47:C5:A6:5E:6D:46:A2:04:B7:9D:D9:EE:56:6B:9D:3C:98:32:BA:81:EB:C4:21:3D:33:92:E9:2F:F9}
+
+[[ -n $keystore ]] || {
+  echo 'ANDROID_KEYSTORE is required; refusing to generate a throwaway APK signer' >&2
+  exit 1
+}
+[[ -f $keystore ]] || { echo "missing Android signing keystore: $keystore" >&2; exit 1; }
+
+signer_sha256=$(
+  keytool -list -v \
+    -keystore "$keystore" \
+    -storepass "$keystore_password" \
+    -alias "$key_alias" 2>/dev/null |
+    sed -n 's/^[[:space:]]*SHA256: //p' |
+    head -n 1
+)
+[[ $signer_sha256 == "$expected_signer_sha256" ]] || {
+  echo "unexpected Android test signer: ${signer_sha256:-missing}" >&2
+  exit 1
+}
+
 "$apksigner" sign \
   --ks "$keystore" \
-  --ks-pass pass:android \
-  --key-pass pass:android \
+  --ks-key-alias "$key_alias" \
+  --ks-pass "pass:$keystore_password" \
+  --key-pass "pass:$key_password" \
   --out "$output" \
   "$aligned"
-"$apksigner" verify --verbose "$output"
+
+"$apksigner" verify --verbose --print-certs "$output" |
+  tee "$work/signing.txt"
+expected_digest=$(printf '%s' "$expected_signer_sha256" | tr '[:upper:]' '[:lower:]' | tr -d ':')
+grep -Fq "Signer #1 certificate SHA-256 digest: $expected_digest" "$work/signing.txt"
 printf 'APK native ABI          %s\n' "$abi"

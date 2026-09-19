@@ -27,9 +27,8 @@ fail_receipt() {
 command -v "$adb_command" >/dev/null 2>&1 || fail_receipt 'adb unavailable'
 "$adb_command" get-state >/dev/null 2>&1 || fail_receipt 'no Android runtime connected'
 
-"$adb_command" uninstall "$package" >/dev/null 2>&1 || true
-"$adb_command" install -r "$apk" >/dev/null || fail_receipt 'adb install failed'
-trap '"$adb_command" uninstall "$package" >/dev/null 2>&1 || true' EXIT
+"$adb_command" install -r "$apk" >/dev/null || fail_receipt 'initial adb replacement install failed'
+"$adb_command" install -r "$apk" >/dev/null || fail_receipt 'second adb replacement install failed'
 
 "$adb_command" logcat -c
 "$adb_command" shell am force-stop "$package"
