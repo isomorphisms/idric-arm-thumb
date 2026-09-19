@@ -211,5 +211,10 @@ test: print-ascii-test
 
 verify: test
 
+.PHONY: ib-display-repair-boundary
+
+ib-display-repair-boundary: $(DRIVER)
+	IDRIC="$(IDRIC)" DRIVER="$(DRIVER)" tests/ib/check-current-boundary.sh
+
 clean:
 	rm -rf build
