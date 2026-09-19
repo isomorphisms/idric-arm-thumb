@@ -33,11 +33,15 @@ jobs:
           ./Idric/edric bootstrap
           printf '%s\n' "$GITHUB_WORKSPACE/Idric/.tools/bin" >> "$GITHUB_PATH"
 
-      - name: Install pinned Idriç libraries and compiler API
+      - name: Install pinned Idriç support, libraries and compiler API
         run: |
+          make -C Idric install-support PREFIX="$HOME/.idris2"
           make -C Idric install-bootstrap-libs IDRIS2="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
           make -C Idric install-api IDRIS2_BOOT="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
           make -C Idric install-support
 
       - name: Compile, inspect, assemble, and execute Thumb verification
         run: make verify IDRIC="$GITHUB_WORKSPACE/Idric/build/exec/idris2"
+
+      - name: Build screen-red references and execute RGB565 oracle
+        run: sh tests/framebuffer/check.sh

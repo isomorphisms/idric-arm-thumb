@@ -1,0 +1,41 @@
+name: Full-system ARMv7 red screen
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  full-system-red-screen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out ARM backend
+        uses: actions/checkout@v4
+
+      - name: Install cross-bootstrap and system-emulation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            binfmt-support \
+            clang \
+            debootstrap \
+            e2fsprogs \
+            lld \
+            qemu-system-arm \
+            qemu-user-static
+
+      - name: Boot Ubuntu armhf and capture the presented red display
+        run: sh tests/framebuffer/full-system-ubuntu.sh
+
+      - name: Retain guest receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-system-armv7-red-screen
+          path: |
+            build/full-system-arm-red/serial.log
+            build/full-system-arm-red/red.ppm
+          if-no-files-found: warn
